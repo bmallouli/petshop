@@ -1,0 +1,77 @@
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #1a1a1a;
+  background: #fafaf7;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  max-width: 640px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+h1 {
+  font-size: 1.6rem;
+}
+
+.pets {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pet {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: white;
+  border: 1px solid #e5e5e0;
+  border-radius: 8px;
+}
+
+.pet.adopted {
+  opacity: 0.55;
+}
+
+.name {
+  font-weight: 600;
+  flex: 1;
+}
+
+.species {
+  color: #666;
+}
+
+.price {
+  font-variant-numeric: tabular-nums;
+}
+
+.adopted-badge {
+  font-size: 0.8rem;
+  color: #4cb782;
+  font-weight: 600;
+}
+
+button {
+  border: 1px solid #26b5ce;
+  background: #26b5ce;
+  color: white;
+  border-radius: 6px;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #1da0b8;
+}
+
+.error {
+  color: #eb5757;
+}
