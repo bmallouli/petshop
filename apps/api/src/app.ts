@@ -12,6 +12,7 @@ const createPetSchema = z.object({
 const listQuerySchema = z.object({
   species: z.string().min(1).optional(),
   status: z.enum(['available', 'adopted']).optional(),
+  q: z.string().optional(),
 })
 
 export function buildApp(db: Database.Database): FastifyInstance {
@@ -22,7 +23,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
   app.get('/api/pets', async (req, reply) => {
     const query = listQuerySchema.safeParse(req.query)
     if (!query.success) return reply.code(400).send({ error: query.error.issues[0]?.message ?? 'bad query' })
-    const { species, status } = query.data
+    const { species, status, q } = query.data
 
     const where: string[] = []
     const params: string[] = []
@@ -33,6 +34,10 @@ export function buildApp(db: Database.Database): FastifyInstance {
     if (status) {
       where.push('status = ?')
       params.push(status)
+    }
+    if (q) {
+      where.push('LOWER(name) LIKE ?')
+      params.push(`%${q.toLowerCase()}%`)
     }
     const sql = `SELECT * FROM pets ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id`
     const rows = db.prepare(sql).all(...params)
