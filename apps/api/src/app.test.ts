@@ -45,12 +45,13 @@ describe('GET /api/pets/:id', () => {
   it('returns one pet', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/pets/1' })
     expect(res.statusCode).toBe(200)
-    expect((res.json() as Pet).name).toBe('Biscuit')
+    expect(res.json()).toMatchObject({ id: 1, name: 'Biscuit', species: 'dog', status: 'available' })
   })
 
   it('404s on a missing pet', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/pets/999' })
     expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ error: 'not found' })
   })
 })
 

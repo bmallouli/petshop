@@ -43,7 +43,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
     const id = Number((req.params as { id: string }).id)
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'id must be an integer' })
     const row = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
-    if (!row) return reply.code(404).send({ error: `pet ${id} not found` })
+    if (!row) return reply.code(404).send({ error: 'not found' })
     return toPet(row as never)
   })
 
