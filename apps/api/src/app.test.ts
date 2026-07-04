@@ -89,7 +89,7 @@ describe('POST /api/pets/:id/adopt', () => {
     expect(first.statusCode).toBe(200)
 
     const res = await app.inject({ method: 'POST', url: '/api/pets/3/adopt' })
-    expect(res.statusCode).toBe(400)
+    expect(res.statusCode).toBe(409)
     expect(res.json()).toEqual({ error: 'pet 3 is already adopted' })
 
     const check = await app.inject({ method: 'GET', url: '/api/pets/3' })

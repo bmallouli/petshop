@@ -64,7 +64,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
     const row = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
     if (!row) return reply.code(404).send({ error: `pet ${id} not found` })
     if (toPet(row as never).status === 'adopted') {
-      return reply.code(400).send({ error: `pet ${id} is already adopted` })
+      return reply.code(409).send({ error: `pet ${id} is already adopted` })
     }
     db.prepare(`UPDATE pets SET status = 'adopted' WHERE id = ?`).run(id)
     const updated = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
