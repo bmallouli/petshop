@@ -72,6 +72,12 @@ describe('GET /api/pets', () => {
     const pets = res.json() as Pet[]
     expect(pets.length).toBe(8)
   })
+
+  it('treats % and _ in q as literal characters, not SQL LIKE wildcards', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/pets?q=%25' })
+    const pets = res.json() as Pet[]
+    expect(pets.length).toBe(0)
+  })
 })
 
 describe('GET /api/pets/:id', () => {

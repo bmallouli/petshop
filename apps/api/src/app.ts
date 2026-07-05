@@ -36,8 +36,9 @@ export function buildApp(db: Database.Database): FastifyInstance {
       params.push(status)
     }
     if (q) {
-      where.push('LOWER(name) LIKE ?')
-      params.push(`%${q.toLowerCase()}%`)
+      const escaped = q.toLowerCase().replace(/[%_\\]/g, (c) => `\\${c}`)
+      where.push("LOWER(name) LIKE ? ESCAPE '\\'")
+      params.push(`%${escaped}%`)
     }
     const sql = `SELECT * FROM pets ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id`
     const rows = db.prepare(sql).all(...params)
