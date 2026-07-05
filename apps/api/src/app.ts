@@ -17,19 +17,23 @@ const createPetSchema = z.object({
 const listQuerySchema = z.object({
   species: z.string().min(1).optional(),
   status: z.enum(['available', 'adopted']).optional(),
+  q: z.string().optional(),
 })
 
 export function buildApp(db: Database.Database): FastifyInstance {
   const app = Fastify({ logger: false })
 
-  app.get('/health', async () => ({ status: 'ok' }))
+  app.get('/health', async () => {
+    const { count } = db.prepare('SELECT COUNT(*) AS count FROM pets').get() as { count: number }
+    return { status: 'ok', petCount: count }
+  })
 
   app.get('/version', async () => ({ version: pkg.version, uptimeSeconds: process.uptime() }))
 
   app.get('/api/pets', async (req, reply) => {
     const query = listQuerySchema.safeParse(req.query)
     if (!query.success) return reply.code(400).send({ error: query.error.issues[0]?.message ?? 'bad query' })
-    const { species, status } = query.data
+    const { species, status, q } = query.data
 
     const where: string[] = []
     const params: string[] = []
@@ -41,6 +45,11 @@ export function buildApp(db: Database.Database): FastifyInstance {
       where.push('status = ?')
       params.push(status)
     }
+    if (q) {
+      const escaped = q.toLowerCase().replace(/[%_\\]/g, (c) => `\\${c}`)
+      where.push("LOWER(name) LIKE ? ESCAPE '\\'")
+      params.push(`%${escaped}%`)
+    }
     const sql = `SELECT * FROM pets ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id`
     const rows = db.prepare(sql).all(...params)
     return rows.map((row) => toPet(row as never))
@@ -50,7 +59,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
     const id = Number((req.params as { id: string }).id)
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'id must be an integer' })
     const row = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
-    if (!row) return reply.code(404).send({ error: `pet ${id} not found` })
+    if (!row) return reply.code(404).send({ error: 'not found' })
     return toPet(row as never)
   })
 
@@ -70,6 +79,9 @@ export function buildApp(db: Database.Database): FastifyInstance {
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'id must be an integer' })
     const row = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
     if (!row) return reply.code(404).send({ error: `pet ${id} not found` })
+    if (toPet(row as never).status === 'adopted') {
+      return reply.code(409).send({ error: `pet ${id} is already adopted` })
+    }
     db.prepare(`UPDATE pets SET status = 'adopted' WHERE id = ?`).run(id)
     const updated = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
     return toPet(updated as never)

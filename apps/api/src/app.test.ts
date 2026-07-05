@@ -16,7 +16,13 @@ describe('GET /health', () => {
   it('reports ok', async () => {
     const res = await app.inject({ method: 'GET', url: '/health' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ status: 'ok' })
+    expect(res.json()).toEqual({ status: 'ok', petCount: 8 })
+  })
+
+  it('reports petCount matching the pets table row count', async () => {
+    const res = await app.inject({ method: 'GET', url: '/health' })
+    const pets = await app.inject({ method: 'GET', url: '/api/pets' })
+    expect(res.json()).toMatchObject({ petCount: (pets.json() as Pet[]).length })
   })
 })
 
@@ -65,18 +71,58 @@ describe('GET /api/pets', () => {
     const res = await app.inject({ method: 'GET', url: '/api/pets?status=eaten' })
     expect(res.statusCode).toBe(400)
   })
+
+  it('filters by name substring', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/pets?q=bis' })
+    const pets = res.json() as Pet[]
+    expect(pets.length).toBe(1)
+    expect(pets[0]?.name).toBe('Biscuit')
+  })
+
+  it('filters by name substring case-insensitively', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/pets?q=BIS' })
+    const pets = res.json() as Pet[]
+    expect(pets.length).toBe(1)
+    expect(pets[0]?.name).toBe('Biscuit')
+  })
+
+  it('returns no pets when the name substring does not match', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/pets?q=zzz' })
+    const pets = res.json() as Pet[]
+    expect(pets.length).toBe(0)
+  })
+
+  it('combines q with species', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/pets?q=och&species=cat' })
+    const pets = res.json() as Pet[]
+    expect(pets.length).toBe(1)
+    expect(pets[0]).toMatchObject({ name: 'Mochi', species: 'cat' })
+  })
+
+  it('treats an empty q as no filter', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/pets?q=' })
+    const pets = res.json() as Pet[]
+    expect(pets.length).toBe(8)
+  })
+
+  it('treats % and _ in q as literal characters, not SQL LIKE wildcards', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/pets?q=%25' })
+    const pets = res.json() as Pet[]
+    expect(pets.length).toBe(0)
+  })
 })
 
 describe('GET /api/pets/:id', () => {
   it('returns one pet', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/pets/1' })
     expect(res.statusCode).toBe(200)
-    expect((res.json() as Pet).name).toBe('Biscuit')
+    expect(res.json()).toMatchObject({ id: 1, name: 'Biscuit', species: 'dog', status: 'available' })
   })
 
   it('404s on a missing pet', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/pets/999' })
     expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ error: 'not found' })
   })
 })
 
@@ -108,5 +154,17 @@ describe('POST /api/pets/:id/adopt', () => {
   it('404s on a missing pet', async () => {
     const res = await app.inject({ method: 'POST', url: '/api/pets/999/adopt' })
     expect(res.statusCode).toBe(404)
+  })
+
+  it('rejects adopting an already-adopted pet', async () => {
+    const first = await app.inject({ method: 'POST', url: '/api/pets/3/adopt' })
+    expect(first.statusCode).toBe(200)
+
+    const res = await app.inject({ method: 'POST', url: '/api/pets/3/adopt' })
+    expect(res.statusCode).toBe(409)
+    expect(res.json()).toEqual({ error: 'pet 3 is already adopted' })
+
+    const check = await app.inject({ method: 'GET', url: '/api/pets/3' })
+    expect((check.json() as Pet).status).toBe('adopted')
   })
 })
