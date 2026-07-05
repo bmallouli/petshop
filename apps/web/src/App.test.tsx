@@ -48,4 +48,30 @@ describe('App', () => {
     expect(screen.getByText('Biscuit')).toBeDefined()
     expect(screen.getByText('Mochi')).toBeDefined()
   })
+
+  it('shows an empty state when a reload leaves no pets of the selected species', async () => {
+    let dogAdopted = false
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (typeof input === 'string' && input.endsWith('/adopt')) {
+        dogAdopted = true
+        return new Response(null, { status: 200 })
+      }
+      const remaining = dogAdopted ? PETS.filter((pet) => pet.species !== 'dog') : PETS
+      return new Response(JSON.stringify(remaining), { headers: { 'content-type': 'application/json' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const select = screen.getByRole('combobox', { name: 'Species' })
+    fireEvent.change(select, { target: { value: 'dog' } })
+    expect(screen.getByText('Biscuit')).toBeDefined()
+
+    // Adopting the only dog triggers a reload; the selected filter persists but no longer matches anything.
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt' }))
+
+    await screen.findByText('No pets match this species.')
+    expect(screen.queryByText('Biscuit')).toBeNull()
+  })
 })

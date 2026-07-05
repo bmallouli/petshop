@@ -52,20 +52,24 @@ export function App() {
           ))}
         </select>
       </label>
-      <ul className="pets">
-        {visiblePets.map((pet) => (
-          <li key={pet.id} className={`pet ${pet.status}`}>
-            <span className="name">{pet.name}</span>
-            <span className="species">{pet.species}</span>
-            <span className="price">${pet.priceCents}</span>
-            {pet.status === 'adopted' ? (
-              <span className="adopted-badge">adopted</span>
-            ) : (
-              <button onClick={() => void adopt(pet.id)}>Adopt</button>
-            )}
-          </li>
-        ))}
-      </ul>
+      {visiblePets.length === 0 ? (
+        <p>No pets match this species.</p>
+      ) : (
+        <ul className="pets">
+          {visiblePets.map((pet) => (
+            <li key={pet.id} className={`pet ${pet.status}`}>
+              <span className="name">{pet.name}</span>
+              <span className="species">{pet.species}</span>
+              <span className="price">${pet.priceCents}</span>
+              {pet.status === 'adopted' ? (
+                <span className="adopted-badge">adopted</span>
+              ) : (
+                <button onClick={() => void adopt(pet.id)}>Adopt</button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </main>
   )
 }
