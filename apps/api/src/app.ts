@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
 import Fastify, { type FastifyInstance } from 'fastify'
 import type Database from 'better-sqlite3'
 import { z } from 'zod'
-import { toPet } from './db.js'
+import { toPet, toVisit } from './db.js'
 import { sendNotification } from './notifier.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -13,6 +14,12 @@ const createPetSchema = z.object({
   name: z.string().min(1).max(80),
   species: z.string().min(1).max(40),
   priceCents: z.number().int().positive(),
+})
+
+const createVisitSchema = z.object({
+  visitorName: z.string().min(1).max(80),
+  visitorEmail: z.string().email(),
+  startsAt: z.string().datetime(),
 })
 
 const listQuerySchema = z.object({
@@ -114,6 +121,37 @@ export function buildApp(db: Database.Database): FastifyInstance {
     const updated = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
     sendNotification('pet-adopted', { petId: id })
     return toPet(updated as never)
+  })
+
+  app.post('/api/pets/:id/visits', async (req, reply) => {
+    const id = Number((req.params as { id: string }).id)
+    if (!Number.isInteger(id)) return reply.code(400).send({ error: 'id must be an integer' })
+
+    const body = createVisitSchema.safeParse(req.body)
+    if (!body.success) return reply.code(400).send({ error: body.error.issues[0]?.message ?? 'bad body' })
+
+    const petRow = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
+    if (!petRow) return reply.code(404).send({ error: `pet ${id} not found` })
+    if (toPet(petRow as never).status === 'adopted') {
+      return reply.code(409).send({ error: `pet ${id} is not available for visits` })
+    }
+
+    const { visitorName, visitorEmail, startsAt } = body.data
+
+    const existing = db
+      .prepare(`SELECT id FROM visits WHERE pet_id = ? AND starts_at = ? AND status = 'booked'`)
+      .get(id, startsAt)
+    if (existing) return reply.code(409).send({ error: 'slot already booked' })
+
+    const cancellationCode = randomBytes(16).toString('hex')
+    const result = db
+      .prepare(
+        `INSERT INTO visits (pet_id, visitor_name, visitor_email, starts_at, cancellation_code)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(id, visitorName, visitorEmail, startsAt, cancellationCode)
+    const row = db.prepare('SELECT * FROM visits WHERE id = ?').get(result.lastInsertRowid)
+    return reply.code(201).send(toVisit(row as never))
   })
 
   return app
