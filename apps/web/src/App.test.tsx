@@ -32,4 +32,11 @@ describe('App', () => {
     expect(screen.getAllByRole('button', { name: 'Adopt' }).length).toBe(1)
     expect(screen.getByText('adopted')).toBeDefined()
   })
+
+  it('formats prices as dollars with two decimals', async () => {
+    render(<App />)
+    await screen.findByText('Biscuit')
+    expect(screen.getByText('$899.00')).toBeDefined()
+    expect(screen.getByText('$649.00')).toBeDefined()
+  })
 })

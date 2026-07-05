@@ -8,6 +8,10 @@ export interface Pet {
   status: 'available' | 'adopted'
 }
 
+export function formatPrice(priceCents: number): string {
+  return `$${(priceCents / 100).toFixed(2)}`
+}
+
 export function App() {
   const [pets, setPets] = useState<Pet[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -42,7 +46,7 @@ export function App() {
           <li key={pet.id} className={`pet ${pet.status}`}>
             <span className="name">{pet.name}</span>
             <span className="species">{pet.species}</span>
-            <span className="price">${pet.priceCents}</span>
+            <span className="price">{formatPrice(pet.priceCents)}</span>
             {pet.status === 'adopted' ? (
               <span className="adopted-badge">adopted</span>
             ) : (
