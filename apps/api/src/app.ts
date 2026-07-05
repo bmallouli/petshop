@@ -38,7 +38,23 @@ export function buildApp(db: Database.Database): FastifyInstance {
       .get() as { total: number; adopted: number | null }
     const adoptedCount = adopted ?? 0
 
-    return { total, adopted: adoptedCount, available: total - adoptedCount }
+    const speciesRows = db
+      .prepare(
+        `SELECT species,
+                COUNT(*) AS total,
+                SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) AS available
+         FROM pets
+         GROUP BY species
+         ORDER BY species`,
+      )
+      .all() as { species: string; total: number; available: number | null }[]
+
+    const bySpecies: Record<string, { total: number; available: number }> = {}
+    for (const row of speciesRows) {
+      bySpecies[row.species] = { total: row.total, available: row.available ?? 0 }
+    }
+
+    return { total, adopted: adoptedCount, available: total - adoptedCount, bySpecies }
   })
 
   app.get('/api/pets', async (req, reply) => {

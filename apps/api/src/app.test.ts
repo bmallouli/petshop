@@ -56,7 +56,7 @@ describe('GET /api/stats', () => {
     const emptyApp = buildApp(openDb(':memory:'))
     const res = await emptyApp.inject({ method: 'GET', url: '/api/stats' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ total: 0, adopted: 0, available: 0 })
+    expect(res.json()).toEqual({ total: 0, adopted: 0, available: 0, bySpecies: {} })
   })
 
   it('reports counts for a mix of adopted and available pets', async () => {
@@ -78,6 +78,29 @@ describe('GET /api/stats', () => {
     expect(stats.total).toBe(pets.length)
     expect(stats.adopted).toBe(pets.filter((p) => p.status === 'adopted').length)
     expect(stats.available).toBe(pets.filter((p) => p.status === 'available').length)
+  })
+
+  it('breaks down totals and availability by species', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/1/adopt' })
+
+    const res = await app.inject({ method: 'GET', url: '/api/stats' })
+    expect(res.statusCode).toBe(200)
+    const stats = res.json() as {
+      bySpecies: Record<string, { total: number; available: number }>
+    }
+
+    const pets = (await app.inject({ method: 'GET', url: '/api/pets' })).json() as Pet[]
+    const expected: Record<string, { total: number; available: number }> = {}
+    for (const pet of pets) {
+      const entry = (expected[pet.species] ??= { total: 0, available: 0 })
+      entry.total += 1
+      if (pet.status === 'available') entry.available += 1
+    }
+
+    expect(stats.bySpecies).toEqual(expected)
+    // Biscuit (dog) was adopted, so dogs have one fewer available than total.
+    expect(stats.bySpecies.dog).toEqual({ total: 2, available: 1 })
+    expect(stats.bySpecies.cat).toEqual({ total: 2, available: 2 })
   })
 })
 
