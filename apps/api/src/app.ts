@@ -17,7 +17,10 @@ const listQuerySchema = z.object({
 export function buildApp(db: Database.Database): FastifyInstance {
   const app = Fastify({ logger: false })
 
-  app.get('/health', async () => ({ status: 'ok' }))
+  app.get('/health', async () => {
+    const { count } = db.prepare('SELECT COUNT(*) AS count FROM pets').get() as { count: number }
+    return { status: 'ok', petCount: count }
+  })
 
   app.get('/api/pets', async (req, reply) => {
     const query = listQuerySchema.safeParse(req.query)
