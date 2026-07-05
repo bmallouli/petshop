@@ -3,6 +3,7 @@ import Fastify, { type FastifyInstance } from 'fastify'
 import type Database from 'better-sqlite3'
 import { z } from 'zod'
 import { toPet } from './db.js'
+import { sendNotification } from './notifier.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
   version: string
@@ -84,6 +85,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
     }
     db.prepare(`UPDATE pets SET status = 'adopted' WHERE id = ?`).run(id)
     const updated = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
+    sendNotification('pet-adopted', { petId: id })
     return toPet(updated as never)
   })
 
