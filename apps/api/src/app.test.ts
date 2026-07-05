@@ -15,7 +15,13 @@ describe('GET /health', () => {
   it('reports ok', async () => {
     const res = await app.inject({ method: 'GET', url: '/health' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ status: 'ok' })
+    expect(res.json()).toEqual({ status: 'ok', petCount: 8 })
+  })
+
+  it('reports petCount matching the pets table row count', async () => {
+    const res = await app.inject({ method: 'GET', url: '/health' })
+    const pets = await app.inject({ method: 'GET', url: '/api/pets' })
+    expect(res.json()).toMatchObject({ petCount: (pets.json() as Pet[]).length })
   })
 })
 
