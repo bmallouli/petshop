@@ -12,16 +12,25 @@ export function formatPrice(priceCents: number): string {
   return `$${(priceCents / 100).toFixed(2)}`
 }
 
+export interface Stats {
+  total: number
+  adopted: number
+  available: number
+}
+
 export function App() {
   const [pets, setPets] = useState<Pet[] | null>(null)
+  const [stats, setStats] = useState<Stats | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [species, setSpecies] = useState('all')
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/pets')
-      if (!res.ok) throw new Error(`API returned ${res.status}`)
-      setPets((await res.json()) as Pet[])
+      const [petsRes, statsRes] = await Promise.all([fetch('/api/pets'), fetch('/api/stats')])
+      if (!petsRes.ok) throw new Error(`API returned ${petsRes.status}`)
+      if (!statsRes.ok) throw new Error(`API returned ${statsRes.status}`)
+      setPets((await petsRes.json()) as Pet[])
+      setStats((await statsRes.json()) as Stats)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -44,7 +53,10 @@ export function App() {
 
   return (
     <main>
-      <h1>🐾 Petshop</h1>
+      <header className="header">
+        <h1>🐾 Petshop</h1>
+        {stats && <span className="available-count">{stats.available} available</span>}
+      </header>
       <label>
         Species
         <select value={species} onChange={(e) => setSpecies(e.target.value)}>

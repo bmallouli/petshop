@@ -51,6 +51,36 @@ describe('GET /version', () => {
   })
 })
 
+describe('GET /api/stats', () => {
+  it('returns zeroed counts for an empty store', async () => {
+    const emptyApp = buildApp(openDb(':memory:'))
+    const res = await emptyApp.inject({ method: 'GET', url: '/api/stats' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ total: 0, adopted: 0, available: 0 })
+  })
+
+  it('reports counts for a mix of adopted and available pets', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/3/adopt' })
+    await app.inject({ method: 'POST', url: '/api/pets/5/adopt' })
+
+    const res = await app.inject({ method: 'GET', url: '/api/stats' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ total: 8, adopted: 2, available: 6 })
+  })
+
+  it('keeps total equal to adopted plus available and consistent with the pets table', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/1/adopt' })
+    const res = await app.inject({ method: 'GET', url: '/api/stats' })
+    const stats = res.json() as { total: number; adopted: number; available: number }
+    expect(stats.adopted + stats.available).toBe(stats.total)
+
+    const pets = (await app.inject({ method: 'GET', url: '/api/pets' })).json() as Pet[]
+    expect(stats.total).toBe(pets.length)
+    expect(stats.adopted).toBe(pets.filter((p) => p.status === 'adopted').length)
+    expect(stats.available).toBe(pets.filter((p) => p.status === 'available').length)
+  })
+})
+
 describe('GET /api/pets', () => {
   it('lists the seeded pets', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/pets' })
