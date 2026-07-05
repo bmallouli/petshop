@@ -27,7 +27,21 @@ describe('GET /version', () => {
     }
     const res = await app.inject({ method: 'GET', url: '/version' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ version: pkg.version })
+    expect(res.json()).toMatchObject({ version: pkg.version })
+  })
+
+  it('reports a non-negative uptimeSeconds that grows over time', async () => {
+    const first = await app.inject({ method: 'GET', url: '/version' })
+    expect(first.statusCode).toBe(200)
+    const firstUptime = (first.json() as { uptimeSeconds: number }).uptimeSeconds
+    expect(typeof firstUptime).toBe('number')
+    expect(firstUptime).toBeGreaterThanOrEqual(0)
+
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    const second = await app.inject({ method: 'GET', url: '/version' })
+    const secondUptime = (second.json() as { uptimeSeconds: number }).uptimeSeconds
+    expect(secondUptime).toBeGreaterThan(firstUptime)
   })
 })
 

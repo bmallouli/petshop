@@ -24,7 +24,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
 
   app.get('/health', async () => ({ status: 'ok' }))
 
-  app.get('/version', async () => ({ version: pkg.version }))
+  app.get('/version', async () => ({ version: pkg.version, uptimeSeconds: process.uptime() }))
 
   app.get('/api/pets', async (req, reply) => {
     const query = listQuerySchema.safeParse(req.query)
