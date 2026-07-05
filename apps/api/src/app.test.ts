@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from './app.js'
 import { openDb, seed, type Pet } from './db.js'
+import * as notifier from './notifier.js'
 
 let app: FastifyInstance
 
@@ -149,6 +150,23 @@ describe('POST /api/pets/:id/adopt', () => {
     const res = await app.inject({ method: 'POST', url: '/api/pets/3/adopt' })
     expect(res.statusCode).toBe(200)
     expect((res.json() as Pet).status).toBe('adopted')
+  })
+
+  it('sends a pet-adopted notification on a successful adoption', async () => {
+    const spy = vi.spyOn(notifier, 'sendNotification').mockImplementation(() => {})
+    const res = await app.inject({ method: 'POST', url: '/api/pets/3/adopt' })
+    expect(res.statusCode).toBe(200)
+    expect(spy).toHaveBeenCalledWith('pet-adopted', { petId: 3 })
+    spy.mockRestore()
+  })
+
+  it('does not notify when the pet is already adopted', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/3/adopt' })
+    const spy = vi.spyOn(notifier, 'sendNotification').mockImplementation(() => {})
+    const res = await app.inject({ method: 'POST', url: '/api/pets/3/adopt' })
+    expect(res.statusCode).toBe(409)
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
   })
 
   it('404s on a missing pet', async () => {
