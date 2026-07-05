@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from './app.js'
@@ -16,6 +17,17 @@ describe('GET /health', () => {
     const res = await app.inject({ method: 'GET', url: '/health' })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({ status: 'ok' })
+  })
+})
+
+describe('GET /version', () => {
+  it('reports the version from package.json', async () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      version: string
+    }
+    const res = await app.inject({ method: 'GET', url: '/version' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ version: pkg.version })
   })
 })
 
