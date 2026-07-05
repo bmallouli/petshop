@@ -31,6 +31,33 @@ export function buildApp(db: Database.Database): FastifyInstance {
 
   app.get('/version', async () => ({ version: pkg.version, uptimeSeconds: process.uptime() }))
 
+  app.get('/api/stats', async () => {
+    const { total, adopted } = db
+      .prepare(
+        `SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'adopted' THEN 1 ELSE 0 END) AS adopted FROM pets`,
+      )
+      .get() as { total: number; adopted: number | null }
+    const adoptedCount = adopted ?? 0
+
+    const speciesRows = db
+      .prepare(
+        `SELECT species,
+                COUNT(*) AS total,
+                SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) AS available
+         FROM pets
+         GROUP BY species
+         ORDER BY species`,
+      )
+      .all() as { species: string; total: number; available: number | null }[]
+
+    const bySpecies: Record<string, { total: number; available: number }> = {}
+    for (const row of speciesRows) {
+      bySpecies[row.species] = { total: row.total, available: row.available ?? 0 }
+    }
+
+    return { total, adopted: adoptedCount, available: total - adoptedCount, bySpecies }
+  })
+
   app.get('/api/pets', async (req, reply) => {
     const query = listQuerySchema.safeParse(req.query)
     if (!query.success) return reply.code(400).send({ error: query.error.issues[0]?.message ?? 'bad query' })
