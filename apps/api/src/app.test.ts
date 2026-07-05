@@ -52,11 +52,11 @@ describe('GET /version', () => {
 })
 
 describe('GET /api/stats', () => {
-  it('returns zeroed counts for an empty store', async () => {
+  it('returns zeroed counts and an empty species breakdown for an empty store', async () => {
     const emptyApp = buildApp(openDb(':memory:'))
     const res = await emptyApp.inject({ method: 'GET', url: '/api/stats' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ total: 0, adopted: 0, available: 0 })
+    expect(res.json()).toEqual({ total: 0, adopted: 0, available: 0, bySpecies: {} })
   })
 
   it('reports counts for a mix of adopted and available pets', async () => {
@@ -65,7 +65,32 @@ describe('GET /api/stats', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/stats' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ total: 8, adopted: 2, available: 6 })
+    expect(res.json()).toMatchObject({ total: 8, adopted: 2, available: 6 })
+  })
+
+  it('reports a per-species breakdown of total and available counts', async () => {
+    // Adopt Nibbles (hamster, id 3) and Pepper (dog, id 5).
+    await app.inject({ method: 'POST', url: '/api/pets/3/adopt' })
+    await app.inject({ method: 'POST', url: '/api/pets/5/adopt' })
+
+    const res = await app.inject({ method: 'GET', url: '/api/stats' })
+    expect(res.statusCode).toBe(200)
+    const { bySpecies } = res.json() as {
+      bySpecies: Record<string, { total: number; available: number }>
+    }
+    expect(bySpecies).toEqual({
+      cat: { total: 2, available: 2 },
+      dog: { total: 2, available: 1 },
+      fish: { total: 1, available: 1 },
+      hamster: { total: 1, available: 0 },
+      parrot: { total: 1, available: 1 },
+      rabbit: { total: 1, available: 1 },
+    })
+
+    // Breakdown totals stay consistent with the top-level counts.
+    const totals = Object.values(bySpecies)
+    expect(totals.reduce((sum, s) => sum + s.total, 0)).toBe(8)
+    expect(totals.reduce((sum, s) => sum + s.available, 0)).toBe(6)
   })
 
   it('keeps total equal to adopted plus available and consistent with the pets table', async () => {
