@@ -2,13 +2,14 @@ import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from './app.js'
-import { openDb, seed, type Pet } from './db.js'
+import { openDb, seed, type Pet, type Visit } from './db.js'
 import * as notifier from './notifier.js'
 
 let app: FastifyInstance
+let db: ReturnType<typeof openDb>
 
 beforeEach(() => {
-  const db = openDb(':memory:')
+  db = openDb(':memory:')
   seed(db)
   app = buildApp(db)
 })
@@ -237,5 +238,121 @@ describe('POST /api/pets/:id/adopt', () => {
 
     const check = await app.inject({ method: 'GET', url: '/api/pets/3' })
     expect((check.json() as Pet).status).toBe('adopted')
+  })
+})
+
+describe('POST /api/pets/:id/visits', () => {
+  const validBody = {
+    visitorName: 'Ada Lovelace',
+    visitorEmail: 'ada@example.com',
+    startsAt: '2026-08-01T10:00:00.000Z',
+  }
+
+  it('books a visit and returns 201 with a cancellation code', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: validBody })
+    expect(res.statusCode).toBe(201)
+    const visit = res.json() as Visit
+    expect(visit).toMatchObject({
+      petId: 1,
+      visitorName: 'Ada Lovelace',
+      visitorEmail: 'ada@example.com',
+      startsAt: '2026-08-01T10:00:00.000Z',
+      status: 'booked',
+    })
+    expect(typeof visit.id).toBe('number')
+    expect(visit.cancellationCode).toBeTruthy()
+    expect(visit.cancellationCode.length).toBeGreaterThan(0)
+  })
+
+  it('rejects a second booking for the same pet at the same slot', async () => {
+    const first = await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: validBody })
+    expect(first.statusCode).toBe(201)
+
+    const second = await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: validBody })
+    expect(second.statusCode).toBe(409)
+    expect(second.json()).toEqual({ error: 'slot already booked' })
+  })
+
+  it('allows a different slot for the same pet', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: validBody })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/pets/1/visits',
+      payload: { ...validBody, startsAt: '2026-08-01T10:30:00.000Z' },
+    })
+    expect(res.statusCode).toBe(201)
+  })
+
+  it('allows the same slot for a different pet', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: validBody })
+    const res = await app.inject({ method: 'POST', url: '/api/pets/2/visits', payload: validBody })
+    expect(res.statusCode).toBe(201)
+  })
+
+  it('rejects booking a visit for an adopted pet', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/3/adopt' })
+    const res = await app.inject({ method: 'POST', url: '/api/pets/3/visits', payload: validBody })
+    expect(res.statusCode).toBe(409)
+    expect(res.json()).toEqual({ error: 'pet 3 is not available for visits' })
+  })
+
+  it('404s on a missing pet', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/pets/999/visits', payload: validBody })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ error: 'pet 999 not found' })
+  })
+
+  it('rejects a non-integer id', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/pets/abc/visits', payload: validBody })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('rejects an empty visitor name', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/pets/1/visits',
+      payload: { ...validBody, visitorName: '' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('rejects an invalid email', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/pets/1/visits',
+      payload: { ...validBody, visitorEmail: 'not-an-email' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('rejects a non-ISO startsAt', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/pets/1/visits',
+      payload: { ...validBody, startsAt: 'tomorrow' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('returns distinct cancellation codes for separate bookings', async () => {
+    const first = await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: validBody })
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/pets/2/visits',
+      payload: validBody,
+    })
+    expect((first.json() as Visit).cancellationCode).not.toBe((second.json() as Visit).cancellationCode)
+  })
+
+  it('lets a slot freed by a cancelled visit be rebooked', async () => {
+    const first = await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: validBody })
+    expect(first.statusCode).toBe(201)
+    const visitId = (first.json() as Visit).id
+
+    // Simulate a cancellation directly at the DB layer (no cancel endpoint yet).
+    db.prepare(`UPDATE visits SET status = 'cancelled' WHERE id = ?`).run(visitId)
+
+    const rebook = await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: validBody })
+    expect(rebook.statusCode).toBe(201)
   })
 })
