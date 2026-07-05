@@ -1,7 +1,12 @@
+import { readFileSync } from 'node:fs'
 import Fastify, { type FastifyInstance } from 'fastify'
 import type Database from 'better-sqlite3'
 import { z } from 'zod'
 import { toPet } from './db.js'
+
+const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+  version: string
+}
 
 const createPetSchema = z.object({
   name: z.string().min(1).max(80),
@@ -22,6 +27,8 @@ export function buildApp(db: Database.Database): FastifyInstance {
     const { count } = db.prepare('SELECT COUNT(*) AS count FROM pets').get() as { count: number }
     return { status: 'ok', petCount: count }
   })
+
+  app.get('/version', async () => ({ version: pkg.version, uptimeSeconds: process.uptime() }))
 
   app.get('/api/pets', async (req, reply) => {
     const query = listQuerySchema.safeParse(req.query)

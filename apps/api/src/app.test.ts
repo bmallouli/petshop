@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from './app.js'
@@ -22,6 +23,31 @@ describe('GET /health', () => {
     const res = await app.inject({ method: 'GET', url: '/health' })
     const pets = await app.inject({ method: 'GET', url: '/api/pets' })
     expect(res.json()).toMatchObject({ petCount: (pets.json() as Pet[]).length })
+  })
+})
+
+describe('GET /version', () => {
+  it('reports the version from package.json', async () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      version: string
+    }
+    const res = await app.inject({ method: 'GET', url: '/version' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ version: pkg.version })
+  })
+
+  it('reports a non-negative uptimeSeconds that grows over time', async () => {
+    const first = await app.inject({ method: 'GET', url: '/version' })
+    expect(first.statusCode).toBe(200)
+    const firstUptime = (first.json() as { uptimeSeconds: number }).uptimeSeconds
+    expect(typeof firstUptime).toBe('number')
+    expect(firstUptime).toBeGreaterThanOrEqual(0)
+
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    const second = await app.inject({ method: 'GET', url: '/version' })
+    const secondUptime = (second.json() as { uptimeSeconds: number }).uptimeSeconds
+    expect(secondUptime).toBeGreaterThan(firstUptime)
   })
 })
 
