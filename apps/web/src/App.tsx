@@ -15,6 +15,7 @@ export function formatPrice(priceCents: number): string {
 export function App() {
   const [pets, setPets] = useState<Pet[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [species, setSpecies] = useState('all')
 
   const load = useCallback(async () => {
     try {
@@ -38,23 +39,41 @@ export function App() {
   if (error) return <p className="error">Could not load pets: {error}</p>
   if (!pets) return <p>Loading pets…</p>
 
+  const allSpecies = [...new Set(pets.map((pet) => pet.species))].sort()
+  const visiblePets = species === 'all' ? pets : pets.filter((pet) => pet.species === species)
+
   return (
     <main>
       <h1>🐾 Petshop</h1>
-      <ul className="pets">
-        {pets.map((pet) => (
-          <li key={pet.id} className={`pet ${pet.status}`}>
-            <span className="name">{pet.name}</span>
-            <span className="species">{pet.species}</span>
-            <span className="price">{formatPrice(pet.priceCents)}</span>
-            {pet.status === 'adopted' ? (
-              <span className="adopted-badge">adopted</span>
-            ) : (
-              <button onClick={() => void adopt(pet.id)}>Adopt</button>
-            )}
-          </li>
-        ))}
-      </ul>
+      <label>
+        Species
+        <select value={species} onChange={(e) => setSpecies(e.target.value)}>
+          <option value="all">all</option>
+          {allSpecies.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </label>
+      {visiblePets.length === 0 ? (
+        <p>No pets match this species.</p>
+      ) : (
+        <ul className="pets">
+          {visiblePets.map((pet) => (
+            <li key={pet.id} className={`pet ${pet.status}`}>
+              <span className="name">{pet.name}</span>
+              <span className="species">{pet.species}</span>
+              <span className="price">{formatPrice(pet.priceCents)}</span>
+              {pet.status === 'adopted' ? (
+                <span className="adopted-badge">adopted</span>
+              ) : (
+                <button onClick={() => void adopt(pet.id)}>Adopt</button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </main>
   )
 }
