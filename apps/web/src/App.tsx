@@ -16,7 +16,6 @@ export interface Stats {
   total: number
   adopted: number
   available: number
-  bySpecies?: Record<string, { total: number; available: number }>
 }
 
 export function App() {
