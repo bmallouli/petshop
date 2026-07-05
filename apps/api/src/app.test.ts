@@ -128,4 +128,16 @@ describe('POST /api/pets/:id/adopt', () => {
     const res = await app.inject({ method: 'POST', url: '/api/pets/999/adopt' })
     expect(res.statusCode).toBe(404)
   })
+
+  it('rejects adopting an already-adopted pet', async () => {
+    const first = await app.inject({ method: 'POST', url: '/api/pets/3/adopt' })
+    expect(first.statusCode).toBe(200)
+
+    const res = await app.inject({ method: 'POST', url: '/api/pets/3/adopt' })
+    expect(res.statusCode).toBe(409)
+    expect(res.json()).toEqual({ error: 'pet 3 is already adopted' })
+
+    const check = await app.inject({ method: 'GET', url: '/api/pets/3' })
+    expect((check.json() as Pet).status).toBe('adopted')
+  })
 })
