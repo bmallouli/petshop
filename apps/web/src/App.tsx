@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 export interface Pet {
   id: number
@@ -18,11 +18,28 @@ export interface Stats {
   available: number
 }
 
+export interface Visit {
+  id: number
+  petId: number
+  visitorName: string
+  startsAt: string
+  status: 'booked' | 'cancelled'
+}
+
 export function App() {
   const [pets, setPets] = useState<Pet[] | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [species, setSpecies] = useState('all')
+
+  const [cancelVisitId, setCancelVisitId] = useState('')
+  const [cancelCode, setCancelCode] = useState('')
+  const [cancelPending, setCancelPending] = useState(false)
+  const [cancelError, setCancelError] = useState<string | null>(null)
+  const [cancelMessage, setCancelMessage] = useState<string | null>(null)
+  const [affectedVisits, setAffectedVisits] = useState<{ petId: number; visits: Visit[] } | null>(
+    null,
+  )
 
   const load = useCallback(async () => {
     try {
@@ -43,6 +60,48 @@ export function App() {
   async function adopt(id: number) {
     await fetch(`/api/pets/${id}/adopt`, { method: 'POST' })
     await load()
+  }
+
+  async function cancelVisit(event: FormEvent) {
+    event.preventDefault()
+    const id = cancelVisitId.trim()
+    const code = cancelCode.trim()
+    if (!id || !code || cancelPending) return
+
+    setCancelPending(true)
+    setCancelError(null)
+    setCancelMessage(null)
+    try {
+      const res = await fetch(`/api/visits/${id}/cancel`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ cancellationCode: code }),
+      })
+      const data = (await res.json()) as Partial<Visit> & { error?: string }
+      if (!res.ok) {
+        setCancelError(data.error ?? `API returned ${res.status}`)
+        return
+      }
+
+      const visit = data as Visit
+      setCancelMessage(`Visit #${visit.id} cancelled.`)
+      setCancelVisitId('')
+      setCancelCode('')
+
+      // Refresh the affected pet's upcoming visits so the cancelled slot disappears.
+      try {
+        const visitsRes = await fetch(`/api/pets/${visit.petId}/visits`)
+        if (visitsRes.ok) {
+          setAffectedVisits({ petId: visit.petId, visits: (await visitsRes.json()) as Visit[] })
+        }
+      } catch {
+        // A failed refresh must not undo the confirmed cancellation.
+      }
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setCancelPending(false)
+    }
   }
 
   if (error) return <p className="error">Could not load pets: {error}</p>
@@ -86,6 +145,54 @@ export function App() {
           ))}
         </ul>
       )}
+      <section className="cancel-visit">
+        <h2>Cancel a visit</h2>
+        <p className="hint">
+          Holding a booking? Enter the visit id and the cancellation code you received.
+        </p>
+        <form onSubmit={(e) => void cancelVisit(e)}>
+          <label>
+            Visit id
+            <input
+              type="number"
+              value={cancelVisitId}
+              onChange={(e) => setCancelVisitId(e.target.value)}
+            />
+          </label>
+          <label>
+            Cancellation code
+            <input
+              type="text"
+              value={cancelCode}
+              onChange={(e) => setCancelCode(e.target.value)}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={cancelPending || !cancelVisitId.trim() || !cancelCode.trim()}
+          >
+            {cancelPending ? 'Cancelling…' : 'Cancel visit'}
+          </button>
+        </form>
+        {cancelError && <p className="error cancel-error">{cancelError}</p>}
+        {cancelMessage && <p className="cancel-success">{cancelMessage}</p>}
+        {affectedVisits && (
+          <div className="affected-visits">
+            <h3>Upcoming visits for pet #{affectedVisits.petId}</h3>
+            {affectedVisits.visits.length === 0 ? (
+              <p>No upcoming visits.</p>
+            ) : (
+              <ul>
+                {affectedVisits.visits.map((visit) => (
+                  <li key={visit.id}>
+                    #{visit.id} — {visit.startsAt}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
     </main>
   )
 }

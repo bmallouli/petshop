@@ -87,3 +87,52 @@ button:hover {
 .error {
   color: #eb5757;
 }
+
+.cancel-visit {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e5e5e0;
+}
+
+.cancel-visit h2 {
+  font-size: 1.2rem;
+}
+
+.cancel-visit .hint {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.cancel-visit form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.cancel-visit label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.cancel-visit input {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #d5d5d0;
+  border-radius: 6px;
+}
+
+.cancel-visit button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cancel-success {
+  color: #4a7a4a;
+  font-weight: 600;
+}
+
+.affected-visits h3 {
+  font-size: 1rem;
+}
