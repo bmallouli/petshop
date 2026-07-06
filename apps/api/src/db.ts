@@ -9,6 +9,7 @@ export interface Pet {
   priceCents: number
   status: 'available' | 'adopted' | 'on_hold'
   ownerId: number | null
+  adoptedAt: string | null
   createdAt: string
 }
 
@@ -77,6 +78,7 @@ export function openDb(path: string): Database.Database {
       species     TEXT NOT NULL,
       price_cents INTEGER NOT NULL,
       status      TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'adopted', 'on_hold')),
+      adopted_at  TEXT,
       created_at  TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `)
@@ -107,6 +109,12 @@ export function openDb(path: string): Database.Database {
   const petColumns = db.prepare('PRAGMA table_info(pets)').all() as { name: string }[]
   if (!petColumns.some((col) => col.name === 'owner_id')) {
     db.exec('ALTER TABLE pets ADD COLUMN owner_id INTEGER REFERENCES owners(id)')
+  }
+  // `adopted_at` records when a pet was marked adopted so "adopted recently" lists
+  // can be built. Added via ALTER when missing so existing databases migrate in place;
+  // pets adopted before this column existed keep a NULL value.
+  if (!petColumns.some((col) => col.name === 'adopted_at')) {
+    db.exec('ALTER TABLE pets ADD COLUMN adopted_at TEXT')
   }
   return db
 }
@@ -152,6 +160,7 @@ interface PetRow {
   price_cents: number
   status: 'available' | 'adopted' | 'on_hold'
   owner_id: number | null
+  adopted_at: string | null
   created_at: string
 }
 
@@ -163,6 +172,7 @@ export function toPet(row: PetRow): Pet {
     priceCents: row.price_cents,
     status: row.status,
     ownerId: row.owner_id ?? null,
+    adoptedAt: row.adopted_at ?? null,
     createdAt: row.created_at,
   }
 }
