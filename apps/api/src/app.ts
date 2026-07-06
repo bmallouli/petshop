@@ -123,6 +123,22 @@ export function buildApp(db: Database.Database): FastifyInstance {
     return toPet(updated as never)
   })
 
+  app.get('/api/pets/:id/visits', async (req, reply) => {
+    const id = Number((req.params as { id: string }).id)
+    if (!Number.isInteger(id)) return reply.code(400).send({ error: 'id must be an integer' })
+
+    const petRow = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
+    if (!petRow) return reply.code(404).send({ error: `pet ${id} not found` })
+
+    const rows = db
+      .prepare(`SELECT * FROM visits WHERE pet_id = ? AND status = 'booked' ORDER BY starts_at ASC`)
+      .all(id)
+    return rows.map((row) => {
+      const { cancellationCode: _cancellationCode, ...visit } = toVisit(row as never)
+      return visit
+    })
+  })
+
   app.post('/api/pets/:id/visits', async (req, reply) => {
     const id = Number((req.params as { id: string }).id)
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'id must be an integer' })

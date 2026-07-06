@@ -356,3 +356,80 @@ describe('POST /api/pets/:id/visits', () => {
     expect(rebook.statusCode).toBe(201)
   })
 })
+
+describe('GET /api/pets/:id/visits', () => {
+  const validBody = {
+    visitorName: 'Ada Lovelace',
+    visitorEmail: 'ada@example.com',
+    startsAt: '2026-08-01T10:00:00.000Z',
+  }
+
+  it('lists a pet booked visits ordered by startsAt ascending', async () => {
+    await app.inject({
+      method: 'POST',
+      url: '/api/pets/1/visits',
+      payload: { ...validBody, startsAt: '2026-08-02T10:00:00.000Z' },
+    })
+    await app.inject({
+      method: 'POST',
+      url: '/api/pets/1/visits',
+      payload: { ...validBody, startsAt: '2026-08-01T09:00:00.000Z' },
+    })
+
+    const res = await app.inject({ method: 'GET', url: '/api/pets/1/visits' })
+    expect(res.statusCode).toBe(200)
+    const visits = res.json() as Visit[]
+    expect(visits.length).toBe(2)
+    expect(visits.map((v) => v.startsAt)).toEqual([
+      '2026-08-01T09:00:00.000Z',
+      '2026-08-02T10:00:00.000Z',
+    ])
+    expect(visits[0]).toMatchObject({
+      petId: 1,
+      visitorName: 'Ada Lovelace',
+      visitorEmail: 'ada@example.com',
+      status: 'booked',
+    })
+  })
+
+  it('never exposes the cancellationCode', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: validBody })
+    const res = await app.inject({ method: 'GET', url: '/api/pets/1/visits' })
+    const visits = res.json() as Record<string, unknown>[]
+    expect(visits.length).toBe(1)
+    for (const visit of visits) expect(visit).not.toHaveProperty('cancellationCode')
+  })
+
+  it('returns an empty array for a pet with no visits', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/pets/2/visits' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual([])
+  })
+
+  it('404s on a missing pet', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/pets/999/visits' })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ error: 'pet 999 not found' })
+  })
+
+  it('rejects a non-integer id', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/pets/abc/visits' })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('omits cancelled visits', async () => {
+    const booked = await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: validBody })
+    const cancelledRes = await app.inject({
+      method: 'POST',
+      url: '/api/pets/1/visits',
+      payload: { ...validBody, startsAt: '2026-08-03T10:00:00.000Z' },
+    })
+    const cancelledId = (cancelledRes.json() as Visit).id
+    db.prepare(`UPDATE visits SET status = 'cancelled' WHERE id = ?`).run(cancelledId)
+
+    const res = await app.inject({ method: 'GET', url: '/api/pets/1/visits' })
+    const visits = res.json() as Visit[]
+    expect(visits.length).toBe(1)
+    expect(visits[0]?.id).toBe((booked.json() as Visit).id)
+  })
+})
