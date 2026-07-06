@@ -23,6 +23,21 @@ export function formatPrice(priceCents: number): string {
   return `$${(priceCents / 100).toFixed(2)}`
 }
 
+/**
+ * Order pets for display so every available pet comes before every non-available
+ * (adopted) one, preserving the original relative order within each group. The
+ * decorate-sort-undo keeps this stable regardless of the engine's sort stability.
+ */
+export function sortAvailableFirst(pets: Pet[]): Pet[] {
+  return pets
+    .map((pet, index) => ({ pet, index }))
+    .sort((a, b) => {
+      const rank = (pet: Pet) => (pet.status === 'available' ? 0 : 1)
+      return rank(a.pet) - rank(b.pet) || a.index - b.index
+    })
+    .map((entry) => entry.pet)
+}
+
 /** A pet's upcoming visit as returned by GET /api/pets/:id/visits (no cancellation code). */
 export interface Visit {
   id: number
@@ -434,7 +449,9 @@ export function App() {
   if (!pets) return <p>Loading pets…</p>
 
   const allSpecies = [...new Set(pets.map((pet) => pet.species))].sort()
-  const visiblePets = species === 'all' ? pets : pets.filter((pet) => pet.species === species)
+  const visiblePets = sortAvailableFirst(
+    species === 'all' ? pets : pets.filter((pet) => pet.species === species),
+  )
 
   return (
     <main>
