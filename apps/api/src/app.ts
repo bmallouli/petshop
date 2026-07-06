@@ -297,6 +297,19 @@ export function buildApp(db: Database.Database): FastifyInstance {
     return reply.code(201).send(toVisit(row as never))
   })
 
+  // Number of upcoming (booked, non-cancelled) visits whose startsAt is still in the
+  // future, across every pet. datetime() normalizes the ISO-8601 startsAt so the
+  // comparison against datetime('now') is a real timestamp comparison, not lexical.
+  app.get('/api/visits/upcoming', async () => {
+    const { count } = db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM visits
+         WHERE status = 'booked' AND datetime(starts_at) > datetime('now')`,
+      )
+      .get() as { count: number }
+    return { count }
+  })
+
   app.post('/api/visits/:id/cancel', async (req, reply) => {
     const id = Number((req.params as { id: string }).id)
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'id must be an integer' })
