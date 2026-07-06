@@ -41,11 +41,59 @@ h1 {
 .pet {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 1rem;
   padding: 0.75rem 1rem;
   background: white;
   border: 1px solid #e5e5e0;
   border-radius: 8px;
+}
+
+.booking {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #e5e5e0;
+}
+
+.booking label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.booking input {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #d5d5d0;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.booking button {
+  align-self: flex-start;
+}
+
+.booking-error {
+  margin: 0;
+}
+
+.booking-confirmation {
+  flex-basis: 100%;
+  margin: 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid #e5e5e0;
+  color: #4a7a4a;
+  font-size: 0.9rem;
+}
+
+.booking-confirmation code {
+  background: #f0f4f0;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
 }
 
 .pet.adopted {
