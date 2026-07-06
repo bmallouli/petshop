@@ -222,4 +222,98 @@ describe('App', () => {
     fireEvent.click(within(biscuitRow).getByRole('button', { name: 'View visits' }))
     expect(await within(biscuitRow).findByText('Grace Hopper')).toBeDefined()
   })
+
+  it('offers a booking control only on available pet cards', async () => {
+    render(<App />)
+    await screen.findByText('Biscuit')
+    expect(screen.getAllByRole('button', { name: 'Book visit' }).length).toBe(1)
+
+    const mochiRow = screen.getByText('Mochi').closest('li') as HTMLElement
+    expect(within(mochiRow).queryByRole('button', { name: 'Book visit' })).toBeNull()
+  })
+
+  it('books a visit and shows the returned cancellation code', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/pets/1/visits')) {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        expect(body.visitorName).toBe('Ada Lovelace')
+        expect(body.visitorEmail).toBe('ada@example.com')
+        expect(typeof body.startsAt).toBe('string')
+        expect((body.startsAt as string).length).toBeGreaterThan(0)
+        return json({
+          id: 7,
+          petId: 1,
+          visitorName: 'Ada Lovelace',
+          visitorEmail: 'ada@example.com',
+          startsAt: body.startsAt,
+          status: 'booked',
+          cancellationCode: 'sekret-code-123',
+          createdAt: '2026-07-06T00:00:00.000Z',
+        })
+      }
+      if (url.endsWith('/api/stats')) return json(statsFor(PETS))
+      return json(PETS)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const biscuitRow = screen.getByText('Biscuit').closest('li') as HTMLElement
+    fireEvent.click(within(biscuitRow).getByRole('button', { name: 'Book visit' }))
+
+    fireEvent.change(within(biscuitRow).getByLabelText('Your name'), {
+      target: { value: 'Ada Lovelace' },
+    })
+    fireEvent.change(within(biscuitRow).getByLabelText('Email'), {
+      target: { value: 'ada@example.com' },
+    })
+    fireEvent.change(within(biscuitRow).getByLabelText('Slot'), {
+      target: { value: '2026-08-01T15:30' },
+    })
+    fireEvent.click(within(biscuitRow).getByRole('button', { name: 'Book' }))
+
+    expect(await within(biscuitRow).findByText('sekret-code-123')).toBeDefined()
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/pets/1/visits',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('keeps entered values and shows the error message when the slot is taken', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/pets/1/visits')) {
+        return new Response(JSON.stringify({ error: 'slot already booked' }), {
+          status: 409,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      if (url.endsWith('/api/stats')) return json(statsFor(PETS))
+      return json(PETS)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const biscuitRow = screen.getByText('Biscuit').closest('li') as HTMLElement
+    fireEvent.click(within(biscuitRow).getByRole('button', { name: 'Book visit' }))
+
+    const nameInput = within(biscuitRow).getByLabelText('Your name') as HTMLInputElement
+    const emailInput = within(biscuitRow).getByLabelText('Email') as HTMLInputElement
+    fireEvent.change(nameInput, { target: { value: 'Grace Hopper' } })
+    fireEvent.change(emailInput, { target: { value: 'grace@example.com' } })
+    fireEvent.change(within(biscuitRow).getByLabelText('Slot'), {
+      target: { value: '2026-08-01T15:30' },
+    })
+    fireEvent.click(within(biscuitRow).getByRole('button', { name: 'Book' }))
+
+    expect(await within(biscuitRow).findByText('slot already booked')).toBeDefined()
+    // Values are preserved so the visitor can retry a different slot.
+    expect(nameInput.value).toBe('Grace Hopper')
+    expect(emailInput.value).toBe('grace@example.com')
+    expect(within(biscuitRow).queryByText(/Save your cancellation code/)).toBeNull()
+  })
 })
