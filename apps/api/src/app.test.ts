@@ -1,8 +1,11 @@
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import Database from 'better-sqlite3'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from './app.js'
-import { openDb, seed, type Pet, type Visit } from './db.js'
+import { openDb, seed, toOwner, toPet, type Owner, type Pet, type Visit } from './db.js'
 import * as notifier from './notifier.js'
 
 let app: FastifyInstance
@@ -12,6 +15,71 @@ beforeEach(() => {
   db = openDb(':memory:')
   seed(db)
   app = buildApp(db)
+})
+
+describe('seed: owners and pet ownership', () => {
+  it('seeds at least two owners, links pets to owners, and adds a future booked visit', () => {
+    const freshDb = openDb(':memory:')
+    seed(freshDb)
+
+    // At least two owners, each with a unique non-empty access code.
+    const owners = (freshDb.prepare('SELECT * FROM owners ORDER BY id').all() as never[]).map(toOwner)
+    expect(owners.length).toBeGreaterThanOrEqual(2)
+    for (const owner of owners) expect(owner.accessCode.length).toBeGreaterThan(0)
+    const codes = owners.map((o: Owner) => o.accessCode)
+    expect(new Set(codes).size).toBe(codes.length)
+
+    // At least two pets are linked to a seeded owner.
+    const ownerIds = new Set(owners.map((o: Owner) => o.id))
+    const ownedPets = (freshDb.prepare('SELECT * FROM pets WHERE owner_id IS NOT NULL').all() as never[])
+      .map(toPet)
+    expect(ownedPets.length).toBeGreaterThanOrEqual(2)
+    for (const pet of ownedPets) expect(ownerIds.has(pet.ownerId as number)).toBe(true)
+
+    // At least one owned pet has an upcoming booked visit.
+    const upcomingVisit = freshDb
+      .prepare(
+        `SELECT v.* FROM visits v
+         JOIN pets p ON p.id = v.pet_id
+         WHERE v.status = 'booked' AND p.owner_id IS NOT NULL AND v.starts_at > datetime('now')`,
+      )
+      .get() as { id: number; starts_at: string } | undefined
+    expect(upcomingVisit).toBeDefined()
+  })
+
+  it('migrates an existing owner_id-less database by adding the column without dropping data', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'petshop-migrate-'))
+    const path = join(dir, 'pets.db')
+    try {
+      // Build a legacy database whose pets table predates the owner_id column.
+      const legacy = new Database(path)
+      legacy.exec(`
+        CREATE TABLE pets (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          species TEXT NOT NULL,
+          price_cents INTEGER NOT NULL,
+          status TEXT NOT NULL DEFAULT 'available',
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `)
+      legacy.prepare('INSERT INTO pets (name, species, price_cents) VALUES (?, ?, ?)').run('Rex', 'dog', 5000)
+      legacy.close()
+
+      // Reopening runs the PRAGMA-guarded migration.
+      const migrated = openDb(path)
+      const columns = (migrated.prepare('PRAGMA table_info(pets)').all() as { name: string }[]).map(
+        (c) => c.name,
+      )
+      expect(columns).toContain('owner_id')
+      // Existing row survives, with a NULL owner_id.
+      const row = migrated.prepare('SELECT * FROM pets').get() as never
+      expect(toPet(row)).toMatchObject({ name: 'Rex', ownerId: null })
+      migrated.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('GET /health', () => {
