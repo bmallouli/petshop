@@ -124,7 +124,12 @@ function SignedIn({
       <header className="header">
         <h1>🐾 Owner portal</h1>
       </header>
-      <p className="portal-greeting">Signed in as {owner.name}</p>
+      <p className="portal-greeting">Welcome back, {owner.name}</p>
+      {!error && pets !== null && (
+        <p className="portal-pet-count">
+          {pets.length} {pets.length === 1 ? 'pet' : 'pets'}
+        </p>
+      )}
       <button className="portal-signout" onClick={onSignOut}>
         Sign out
       </button>
