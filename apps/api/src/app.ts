@@ -16,6 +16,9 @@ const createPetSchema = z.object({
   priceCents: z.number().int().positive(),
 })
 
+/** Maximum number of UPCOMING (booked) visits allowed per pet before scheduling is rejected. */
+const MAX_UPCOMING_VISITS = 3
+
 const createVisitSchema = z.object({
   visitorName: z.string().min(1).max(80),
   visitorEmail: z.string().email(),
@@ -157,6 +160,17 @@ export function buildApp(db: Database.Database): FastifyInstance {
     }
 
     const { visitorName, visitorEmail, startsAt } = body.data
+
+    // Cap the number of UPCOMING (booked) visits per pet. Pets already over the cap keep
+    // their existing visits (grandfathered) but cannot add new ones until they drop below it.
+    const { count: upcomingCount } = db
+      .prepare(`SELECT COUNT(*) AS count FROM visits WHERE pet_id = ? AND status = 'booked'`)
+      .get(id) as { count: number }
+    if (upcomingCount >= MAX_UPCOMING_VISITS) {
+      return reply.code(409).send({
+        error: `pet ${id} already has the maximum of ${MAX_UPCOMING_VISITS} upcoming visits`,
+      })
+    }
 
     const existing = db
       .prepare(`SELECT id FROM visits WHERE pet_id = ? AND starts_at = ? AND status = 'booked'`)
