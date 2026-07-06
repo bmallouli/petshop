@@ -18,4 +18,5 @@ pnpm test       # unit tests
 pnpm e2e        # end-to-end (starts both servers itself)
 ```
 
+See `TESTING.md` for how to run the unit and e2e test suites (including the one-time Playwright browser install).
 See `CLAUDE.md` for conventions and the full command reference.
