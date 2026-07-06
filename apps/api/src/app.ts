@@ -22,6 +22,10 @@ const createVisitSchema = z.object({
   startsAt: z.string().datetime(),
 })
 
+const cancelVisitSchema = z.object({
+  cancellationCode: z.string().min(1),
+})
+
 const listQuerySchema = z.object({
   species: z.string().min(1).optional(),
   status: z.enum(['available', 'adopted']).optional(),
@@ -168,6 +172,29 @@ export function buildApp(db: Database.Database): FastifyInstance {
       .run(id, visitorName, visitorEmail, startsAt, cancellationCode)
     const row = db.prepare('SELECT * FROM visits WHERE id = ?').get(result.lastInsertRowid)
     return reply.code(201).send(toVisit(row as never))
+  })
+
+  app.post('/api/visits/:id/cancel', async (req, reply) => {
+    const id = Number((req.params as { id: string }).id)
+    if (!Number.isInteger(id)) return reply.code(400).send({ error: 'id must be an integer' })
+
+    const body = cancelVisitSchema.safeParse(req.body)
+    if (!body.success) return reply.code(400).send({ error: body.error.issues[0]?.message ?? 'bad body' })
+
+    const row = db.prepare('SELECT * FROM visits WHERE id = ?').get(id)
+    if (!row) return reply.code(404).send({ error: `visit ${id} not found` })
+
+    const visit = toVisit(row as never)
+    if (visit.cancellationCode !== body.data.cancellationCode) {
+      return reply.code(403).send({ error: 'invalid cancellation code' })
+    }
+    if (visit.status === 'cancelled') {
+      return reply.code(409).send({ error: `visit ${id} is already cancelled` })
+    }
+
+    db.prepare(`UPDATE visits SET status = 'cancelled' WHERE id = ?`).run(id)
+    const updated = db.prepare('SELECT * FROM visits WHERE id = ?').get(id)
+    return toVisit(updated as never)
   })
 
   return app

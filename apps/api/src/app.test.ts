@@ -406,6 +406,115 @@ describe('GET /api/pets/:id/visits', () => {
     expect(res.json()).toEqual([])
   })
 
+  describe('POST /api/visits/:id/cancel', () => {
+    const validBody = {
+      visitorName: 'Ada Lovelace',
+      visitorEmail: 'ada@example.com',
+      startsAt: '2026-08-01T15:00:00.000Z',
+    }
+
+    async function book(): Promise<Visit> {
+      const res = await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: validBody })
+      expect(res.statusCode).toBe(201)
+      return res.json() as Visit
+    }
+
+    it('cancels a visit with the correct code and returns 200', async () => {
+      const visit = await book()
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/visits/${visit.id}/cancel`,
+        payload: { cancellationCode: visit.cancellationCode },
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toMatchObject({ id: visit.id, status: 'cancelled' })
+    })
+
+    it('rejects a wrong cancellation code with 403 and leaves the visit booked', async () => {
+      const visit = await book()
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/visits/${visit.id}/cancel`,
+        payload: { cancellationCode: 'not-the-code' },
+      })
+      expect(res.statusCode).toBe(403)
+      expect(res.json()).toEqual({ error: 'invalid cancellation code' })
+
+      const row = db.prepare('SELECT status FROM visits WHERE id = ?').get(visit.id) as { status: string }
+      expect(row.status).toBe('booked')
+    })
+
+    it('404s on a nonexistent visit id', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/visits/999/cancel',
+        payload: { cancellationCode: 'anything' },
+      })
+      expect(res.statusCode).toBe(404)
+      expect(res.json()).toEqual({ error: 'visit 999 not found' })
+    })
+
+    it('409s when the visit is already cancelled', async () => {
+      const visit = await book()
+      const first = await app.inject({
+        method: 'POST',
+        url: `/api/visits/${visit.id}/cancel`,
+        payload: { cancellationCode: visit.cancellationCode },
+      })
+      expect(first.statusCode).toBe(200)
+
+      const second = await app.inject({
+        method: 'POST',
+        url: `/api/visits/${visit.id}/cancel`,
+        payload: { cancellationCode: visit.cancellationCode },
+      })
+      expect(second.statusCode).toBe(409)
+      expect(second.json()).toEqual({ error: `visit ${visit.id} is already cancelled` })
+    })
+
+    it('rejects a missing cancellationCode with 400', async () => {
+      const visit = await book()
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/visits/${visit.id}/cancel`,
+        payload: {},
+      })
+      expect(res.statusCode).toBe(400)
+    })
+
+    it('rejects an empty cancellationCode with 400', async () => {
+      const visit = await book()
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/visits/${visit.id}/cancel`,
+        payload: { cancellationCode: '' },
+      })
+      expect(res.statusCode).toBe(400)
+    })
+
+    it('rejects a non-integer id with 400', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/visits/abc/cancel',
+        payload: { cancellationCode: 'anything' },
+      })
+      expect(res.statusCode).toBe(400)
+    })
+
+    it('frees the slot so the same pet+startsAt can be rebooked with 201', async () => {
+      const visit = await book()
+      const cancelled = await app.inject({
+        method: 'POST',
+        url: `/api/visits/${visit.id}/cancel`,
+        payload: { cancellationCode: visit.cancellationCode },
+      })
+      expect(cancelled.statusCode).toBe(200)
+
+      const rebook = await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: validBody })
+      expect(rebook.statusCode).toBe(201)
+    })
+  })
+
   it('404s on a missing pet', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/pets/999/visits' })
     expect(res.statusCode).toBe(404)
