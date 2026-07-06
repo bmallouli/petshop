@@ -166,6 +166,15 @@ export function buildApp(db: Database.Database): FastifyInstance {
     return rows.map((row) => toPet(row as never))
   })
 
+  // Distinct species present across all pets, alphabetically sorted. Powers the
+  // web species filter so its options reflect the data instead of a hardcoded list.
+  app.get('/api/pets/species', async () => {
+    const rows = db
+      .prepare('SELECT DISTINCT species FROM pets ORDER BY species ASC')
+      .all() as { species: string }[]
+    return rows.map((row) => row.species)
+  })
+
   app.get('/api/pets/:id', async (req, reply) => {
     const id = Number((req.params as { id: string }).id)
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'id must be an integer' })

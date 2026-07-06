@@ -333,6 +333,39 @@ describe('GET /api/stats', () => {
   })
 })
 
+describe('GET /api/pets/species', () => {
+  it('returns an empty array for an empty store', async () => {
+    const emptyApp = buildApp(openDb(':memory:'))
+    const res = await emptyApp.inject({ method: 'GET', url: '/api/pets/species' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual([])
+  })
+
+  it('returns distinct species, deduplicated and alphabetically sorted', async () => {
+    // Seed data has several species with duplicates (two dogs, two cats).
+    const res = await app.inject({ method: 'GET', url: '/api/pets/species' })
+    expect(res.statusCode).toBe(200)
+    const species = res.json() as string[]
+
+    // Each species appears exactly once.
+    expect(new Set(species).size).toBe(species.length)
+    // Sorted alphabetically.
+    expect(species).toEqual([...species].sort())
+    // Reflects the seeded data.
+    const pets = (await app.inject({ method: 'GET', url: '/api/pets?status=available' })).json() as Pet[]
+    const adopted = (await app.inject({ method: 'GET', url: '/api/pets?status=adopted' })).json() as Pet[]
+    const held = (await app.inject({ method: 'GET', url: '/api/pets?status=on_hold' })).json() as Pet[]
+    const expected = [...new Set([...pets, ...adopted, ...held].map((p) => p.species))].sort()
+    expect(species).toEqual(expected)
+  })
+
+  it('does not match the :id route (static route takes precedence)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/pets/species' })
+    expect(res.statusCode).toBe(200)
+    expect(Array.isArray(res.json())).toBe(true)
+  })
+})
+
 describe('GET /api/pets', () => {
   it('lists the seeded pets', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/pets' })
