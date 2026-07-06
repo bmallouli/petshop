@@ -316,4 +316,81 @@ describe('App', () => {
     expect(emailInput.value).toBe('grace@example.com')
     expect(within(biscuitRow).queryByText(/Save your cancellation code/)).toBeNull()
   })
+
+  it('cancels a visit by code and refreshes the affected pet’s upcoming visits', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/stats')) return json(statsFor(PETS))
+      if (url.endsWith('/api/visits/7/cancel')) {
+        return json({
+          id: 7,
+          petId: 1,
+          visitorName: 'Ada',
+          startsAt: '2026-08-01T10:00:00.000Z',
+          status: 'cancelled',
+        })
+      }
+      if (url.endsWith('/api/pets/1/visits')) return json([])
+      return json(PETS)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const button = screen.getByRole('button', { name: 'Cancel visit' })
+    expect((button as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Visit id' }), {
+      target: { value: '7' },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Cancellation code' }), {
+      target: { value: 'secret-code' },
+    })
+    expect((button as HTMLButtonElement).disabled).toBe(false)
+
+    fireEvent.click(button)
+
+    expect(await screen.findByText('Visit #7 cancelled.')).toBeDefined()
+    expect(screen.getByText('No upcoming visits.')).toBeDefined()
+
+    const cancelCall = fetchMock.mock.calls.find((call) =>
+      String(call[0]).endsWith('/api/visits/7/cancel'),
+    )
+    expect(cancelCall).toBeDefined()
+    const init = cancelCall?.[1] as RequestInit | undefined
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({ cancellationCode: 'secret-code' })
+  })
+
+  it('surfaces the API error when the cancellation code is rejected', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/stats')) return json(statsFor(PETS))
+      if (url.endsWith('/api/visits/7/cancel')) {
+        return new Response(JSON.stringify({ error: 'invalid cancellation code' }), {
+          status: 403,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      return json(PETS)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Visit id' }), {
+      target: { value: '7' },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Cancellation code' }), {
+      target: { value: 'wrong' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel visit' }))
+
+    expect(await screen.findByText('invalid cancellation code')).toBeDefined()
+    // The page still works — the pet list is intact and no success message appears.
+    expect(screen.getByText('Biscuit')).toBeDefined()
+    expect(screen.queryByText(/cancelled\./)).toBeNull()
+  })
 })
