@@ -23,13 +23,45 @@ export function formatPrice(priceCents: number): string {
   return `$${(priceCents / 100).toFixed(2)}`
 }
 
+/** A pet's upcoming visit as returned by GET /api/pets/:id/visits (no cancellation code). */
+export interface Visit {
+  id: number
+  petId: number
+  visitorName: string
+  visitorEmail: string
+  startsAt: string
+  status: 'booked' | 'cancelled'
+  createdAt: string
+}
+
+/** Format an ISO datetime for human-readable display; falls back to the raw string if unparseable. */
+export function formatVisitTime(startsAt: string): string {
+  const date = new Date(startsAt)
+  return Number.isNaN(date.getTime()) ? startsAt : date.toLocaleString()
+}
+
+type VisitsState =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'loaded'; visits: Visit[] }
+
 export interface Stats {
   total: number
   adopted: number
   available: number
 }
 
-function PetCard({ pet, onAdopt }: { pet: Pet; onAdopt: (id: number) => void }) {
+function PetCard({
+  pet,
+  onAdopt,
+  visitsState,
+  onToggleVisits,
+}: {
+  pet: Pet
+  onAdopt: (id: number) => void
+  visitsState: VisitsState | undefined
+  onToggleVisits: () => void
+}) {
   const [open, setOpen] = useState(false)
   const [visitorName, setVisitorName] = useState('')
   const [visitorEmail, setVisitorEmail] = useState('')
@@ -123,6 +155,35 @@ function PetCard({ pet, onAdopt }: { pet: Pet; onAdopt: (id: number) => void }) 
           Visit booked! Save your cancellation code: <code>{confirmation.cancellationCode}</code>
         </p>
       )}
+
+      <button
+        className="visits-toggle"
+        aria-expanded={visitsState !== undefined}
+        onClick={onToggleVisits}
+      >
+        {visitsState ? 'Hide visits' : 'View visits'}
+      </button>
+      {visitsState && (
+        <div className="visits">
+          {visitsState.status === 'loading' && <p>Loading visits…</p>}
+          {visitsState.status === 'error' && (
+            <p className="error">Could not load visits: {visitsState.message}</p>
+          )}
+          {visitsState.status === 'loaded' &&
+            (visitsState.visits.length === 0 ? (
+              <p className="no-visits">No upcoming visits.</p>
+            ) : (
+              <ul className="visit-list">
+                {visitsState.visits.map((visit) => (
+                  <li key={visit.id} className="visit">
+                    <span className="visit-time">{formatVisitTime(visit.startsAt)}</span>
+                    <span className="visit-visitor">{visit.visitorName}</span>
+                  </li>
+                ))}
+              </ul>
+            ))}
+        </div>
+      )}
     </li>
   )
 }
@@ -132,6 +193,7 @@ export function App() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [species, setSpecies] = useState('all')
+  const [visits, setVisits] = useState<Record<number, VisitsState | undefined>>({})
 
   const load = useCallback(async () => {
     try {
@@ -152,6 +214,30 @@ export function App() {
   async function adopt(id: number) {
     await fetch(`/api/pets/${id}/adopt`, { method: 'POST' })
     await load()
+  }
+
+  const loadVisits = useCallback(async (id: number) => {
+    setVisits((prev) => ({ ...prev, [id]: { status: 'loading' } }))
+    try {
+      const res = await fetch(`/api/pets/${id}/visits`)
+      if (!res.ok) throw new Error(`API returned ${res.status}`)
+      const data = (await res.json()) as Visit[]
+      setVisits((prev) => ({ ...prev, [id]: { status: 'loaded', visits: data } }))
+    } catch (err) {
+      setVisits((prev) => ({
+        ...prev,
+        [id]: { status: 'error', message: err instanceof Error ? err.message : String(err) },
+      }))
+    }
+  }, [])
+
+  function toggleVisits(id: number) {
+    // Closing when open; (re)fetching fresh data every time the list is opened.
+    if (visits[id]) {
+      setVisits((prev) => ({ ...prev, [id]: undefined }))
+    } else {
+      void loadVisits(id)
+    }
   }
 
   if (error) return <p className="error">Could not load pets: {error}</p>
@@ -182,7 +268,13 @@ export function App() {
       ) : (
         <ul className="pets">
           {visiblePets.map((pet) => (
-            <PetCard key={pet.id} pet={pet} onAdopt={(id) => void adopt(id)} />
+            <PetCard
+              key={pet.id}
+              pet={pet}
+              onAdopt={(id) => void adopt(id)}
+              visitsState={visits[pet.id]}
+              onToggleVisits={() => toggleVisits(pet.id)}
+            />
           ))}
         </ul>
       )}
