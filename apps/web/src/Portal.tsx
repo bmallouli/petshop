@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { formatPrice, formatVisitTime, type Pet, type Visit } from './App.js'
+import { formatPrice, formatVisitTime, SiteFooter, type Pet, type Visit } from './App.js'
 
 /** localStorage key under which the validated access code is persisted across reloads. */
 const CODE_STORAGE_KEY = 'petshop.ownerCode'
@@ -145,6 +145,7 @@ function SignedIn({
             ))}
           </ul>
         ))}
+      <SiteFooter />
     </main>
   )
 }
@@ -217,6 +218,7 @@ export function Portal() {
     return (
       <main className="portal">
         <p>Loading…</p>
+        <SiteFooter />
       </main>
     )
   }
@@ -249,6 +251,7 @@ export function Portal() {
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
+      <SiteFooter />
     </main>
   )
 }

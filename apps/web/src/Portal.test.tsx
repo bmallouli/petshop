@@ -178,4 +178,25 @@ describe('Portal', () => {
 
     expect(await screen.findByText("You don't have any pets yet.")).toBeDefined()
   })
+
+  it('shows a footer with the demo notice on the login page', async () => {
+    vi.stubGlobal('fetch', portalFetch())
+    render(<Portal />)
+
+    await screen.findByLabelText('Access code')
+    const footer = screen.getByText('petshop — Fleet demo')
+    expect(footer).toBeDefined()
+    expect(footer.tagName).toBe('FOOTER')
+  })
+
+  it('shows a footer with the demo notice on the signed-in page', async () => {
+    localStorage.setItem('petshop.ownerCode', VALID_CODE)
+    vi.stubGlobal('fetch', portalFetch())
+    render(<Portal />)
+
+    await screen.findByText('Biscuit')
+    const footer = screen.getByText('petshop — Fleet demo')
+    expect(footer).toBeDefined()
+    expect(footer.tagName).toBe('FOOTER')
+  })
 })
