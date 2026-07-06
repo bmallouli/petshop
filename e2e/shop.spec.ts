@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 
 test('shows the seeded pets', async ({ page }) => {
   await page.goto('/')
+  await expect(page).toHaveTitle('My Pet Shop')
   await expect(page.getByRole('heading', { name: /Petshop/ })).toBeVisible()
   await expect(page.getByText('Biscuit')).toBeVisible()
   await expect(page.getByText('Ziggy')).toBeVisible()
