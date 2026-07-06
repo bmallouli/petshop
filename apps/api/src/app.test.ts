@@ -126,6 +126,112 @@ describe('GET /api/portal/me', () => {
   })
 })
 
+describe('GET /api/portal/pets', () => {
+  it('401s without an x-owner-code header', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/portal/pets' })
+    expect(res.statusCode).toBe(401)
+    expect(res.json()).toEqual({ error: 'invalid access code' })
+  })
+
+  it('401s for an unknown access code', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/portal/pets',
+      headers: { 'x-owner-code': 'OWNER-NOBODY-9999' },
+    })
+    expect(res.statusCode).toBe(401)
+    expect(res.json()).toEqual({ error: 'invalid access code' })
+  })
+
+  it('returns only the authenticated owner pets, ordered by id', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/portal/pets',
+      headers: { 'x-owner-code': 'OWNER-ADA-0001' },
+    })
+    expect(res.statusCode).toBe(200)
+    const pets = res.json() as Pet[]
+    // Ada owns pets 1 (Biscuit) and 3 (Nibbles).
+    expect(pets.map((p) => p.id)).toEqual([1, 3])
+    expect(pets[0]).toMatchObject({ id: 1, name: 'Biscuit', species: 'dog', status: 'available' })
+    for (const pet of pets) expect(pet.ownerId).not.toBeNull()
+  })
+
+  it('scopes the list per owner: a different code returns a different set', async () => {
+    const ada = await app.inject({
+      method: 'GET',
+      url: '/api/portal/pets',
+      headers: { 'x-owner-code': 'OWNER-ADA-0001' },
+    })
+    const grace = await app.inject({
+      method: 'GET',
+      url: '/api/portal/pets',
+      headers: { 'x-owner-code': 'OWNER-GRACE-0002' },
+    })
+    // Grace owns pets 2 (Mochi) and 5 (Pepper); disjoint from Ada's set.
+    expect((grace.json() as Pet[]).map((p) => p.id)).toEqual([2, 5])
+    expect((ada.json() as Pet[]).map((p) => p.id)).toEqual([1, 3])
+  })
+})
+
+describe('GET /api/portal/pets/:id/visits', () => {
+  it('401s without an x-owner-code header', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/portal/pets/5/visits' })
+    expect(res.statusCode).toBe(401)
+    expect(res.json()).toEqual({ error: 'invalid access code' })
+  })
+
+  it('404s for a pet owned by another owner without leaking it', async () => {
+    // Grace owns pet 5; Ada must not see it.
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/portal/pets/5/visits',
+      headers: { 'x-owner-code': 'OWNER-ADA-0001' },
+    })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ error: 'pet 5 not found' })
+  })
+
+  it('404s for a nonexistent pet', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/portal/pets/999/visits',
+      headers: { 'x-owner-code': 'OWNER-ADA-0001' },
+    })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ error: 'pet 999 not found' })
+  })
+
+  it("returns the owner's pet booked visits ordered by startsAt, without cancellationCode", async () => {
+    // Grace owns pet 5, which has a seeded future booked visit. Add an earlier one.
+    await app.inject({
+      method: 'POST',
+      url: '/api/pets/5/visits',
+      payload: {
+        visitorName: 'Grace Hopper',
+        visitorEmail: 'grace@example.com',
+        startsAt: '2029-06-01T10:00:00.000Z',
+      },
+    })
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/portal/pets/5/visits',
+      headers: { 'x-owner-code': 'OWNER-GRACE-0002' },
+    })
+    expect(res.statusCode).toBe(200)
+    const visits = res.json() as Record<string, unknown>[]
+    expect(visits.map((v) => v.startsAt)).toEqual([
+      '2029-06-01T10:00:00.000Z',
+      '2030-01-15T10:00:00.000Z',
+    ])
+    for (const visit of visits) {
+      expect(visit).not.toHaveProperty('cancellationCode')
+      expect(visit).toMatchObject({ petId: 5, status: 'booked' })
+    }
+  })
+})
+
 describe('GET /health', () => {
   it('reports ok', async () => {
     const res = await app.inject({ method: 'GET', url: '/health' })
