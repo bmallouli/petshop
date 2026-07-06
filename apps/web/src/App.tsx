@@ -51,6 +51,54 @@ export interface Stats {
   available: number
 }
 
+/** Which add-a-pet field an error belongs to; `form` is the fallback when no field can be determined. */
+export type AddPetErrors = {
+  name?: string
+  species?: string
+  price?: string
+  form?: string
+}
+
+/**
+ * Client-side validation mirroring the API's `createPetSchema` (name 1-80 chars,
+ * species 1-40 chars, price that converts to a positive integer number of cents).
+ * Returns a per-field error map; an empty object means the input is valid.
+ */
+export function validateAddPet(name: string, species: string, price: string): AddPetErrors {
+  const errors: AddPetErrors = {}
+
+  const trimmedName = name.trim()
+  if (!trimmedName) errors.name = 'Name is required.'
+  else if (trimmedName.length > 80) errors.name = 'Name must be 80 characters or fewer.'
+
+  const trimmedSpecies = species.trim()
+  if (!trimmedSpecies) errors.species = 'Species is required.'
+  else if (trimmedSpecies.length > 40) errors.species = 'Species must be 40 characters or fewer.'
+
+  const trimmedPrice = price.trim()
+  const dollars = Number(trimmedPrice)
+  const cents = Math.round(dollars * 100)
+  if (!trimmedPrice) errors.price = 'Price is required.'
+  else if (!Number.isFinite(dollars)) errors.price = 'Price must be a number.'
+  else if (!Number.isInteger(cents) || cents <= 0)
+    errors.price = 'Price must be greater than zero.'
+
+  return errors
+}
+
+/**
+ * Best-effort mapping of a server error message to the add-a-pet field it concerns.
+ * The API returns a single zod message with no field path, so we key off keywords;
+ * returns null when no field can be determined (caller shows a form-level message).
+ */
+export function fieldForAddPetError(message: string): keyof AddPetErrors | null {
+  const lower = message.toLowerCase()
+  if (lower.includes('name')) return 'name'
+  if (lower.includes('species')) return 'species'
+  if (lower.includes('price') || lower.includes('cent')) return 'price'
+  return null
+}
+
 function PetCard({
   pet,
   onAdopt,
@@ -211,7 +259,7 @@ export function App() {
   const [addSpecies, setAddSpecies] = useState('')
   const [addPrice, setAddPrice] = useState('')
   const [addPending, setAddPending] = useState(false)
-  const [addError, setAddError] = useState<string | null>(null)
+  const [addErrors, setAddErrors] = useState<AddPetErrors>({})
 
   const [cancelVisitId, setCancelVisitId] = useState('')
   const [cancelCode, setCancelCode] = useState('')
@@ -314,22 +362,35 @@ export function App() {
 
   async function addPet(event: FormEvent) {
     event.preventDefault()
+    if (addPending) return
+
+    // Validate client-side first, mirroring the API constraints, so invalid input is
+    // flagged on the offending field(s) without a wasted round-trip.
+    const validationErrors = validateAddPet(addName, addSpecies, addPrice)
+    if (Object.keys(validationErrors).length > 0) {
+      setAddErrors(validationErrors)
+      return
+    }
+
     const name = addName.trim()
     const species = addSpecies.trim()
-    const dollars = Number(addPrice)
-    if (!name || !species || !addPrice.trim() || Number.isNaN(dollars) || addPending) return
+    const priceCents = Math.round(Number(addPrice) * 100)
 
     setAddPending(true)
-    setAddError(null)
+    setAddErrors({})
     try {
       const res = await fetch('/api/pets', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name, species, priceCents: Math.round(dollars * 100) }),
+        body: JSON.stringify({ name, species, priceCents }),
       })
       const data = (await res.json()) as Pet | { error?: string }
       if (!res.ok) {
-        setAddError(('error' in data && data.error) || `API returned ${res.status}`)
+        const message = ('error' in data && data.error) || `API returned ${res.status}`
+        // The API sends a single message with no field path, so map it to a field when
+        // we can; otherwise fall back to a form-level message.
+        const field = fieldForAddPetError(message)
+        setAddErrors(field ? { [field]: message } : { form: message })
         return
       }
       // Prepend the created pet so it appears without a full reload; keep the form's
@@ -339,7 +400,7 @@ export function App() {
       setAddSpecies('')
       setAddPrice('')
     } catch (err) {
-      setAddError(err instanceof Error ? err.message : String(err))
+      setAddErrors({ form: err instanceof Error ? err.message : String(err) })
     } finally {
       setAddPending(false)
     }
@@ -439,15 +500,41 @@ export function App() {
         <form onSubmit={(e) => void addPet(e)}>
           <label>
             Name
-            <input type="text" value={addName} onChange={(e) => setAddName(e.target.value)} />
+            <input
+              type="text"
+              value={addName}
+              onChange={(e) => {
+                setAddName(e.target.value)
+                if (addErrors.name) setAddErrors((prev) => ({ ...prev, name: undefined }))
+              }}
+              aria-invalid={addErrors.name ? true : undefined}
+              aria-describedby={addErrors.name ? 'add-name-error' : undefined}
+              className={addErrors.name ? 'invalid' : undefined}
+            />
+            {addErrors.name && (
+              <span id="add-name-error" className="error field-error" role="alert">
+                {addErrors.name}
+              </span>
+            )}
           </label>
           <label>
             Species
             <input
               type="text"
               value={addSpecies}
-              onChange={(e) => setAddSpecies(e.target.value)}
+              onChange={(e) => {
+                setAddSpecies(e.target.value)
+                if (addErrors.species) setAddErrors((prev) => ({ ...prev, species: undefined }))
+              }}
+              aria-invalid={addErrors.species ? true : undefined}
+              aria-describedby={addErrors.species ? 'add-species-error' : undefined}
+              className={addErrors.species ? 'invalid' : undefined}
             />
+            {addErrors.species && (
+              <span id="add-species-error" className="error field-error" role="alert">
+                {addErrors.species}
+              </span>
+            )}
           </label>
           <label>
             Price
@@ -456,21 +543,27 @@ export function App() {
               min="0"
               step="0.01"
               value={addPrice}
-              onChange={(e) => setAddPrice(e.target.value)}
+              onChange={(e) => {
+                setAddPrice(e.target.value)
+                if (addErrors.price) setAddErrors((prev) => ({ ...prev, price: undefined }))
+              }}
+              aria-invalid={addErrors.price ? true : undefined}
+              aria-describedby={addErrors.price ? 'add-price-error' : undefined}
+              className={addErrors.price ? 'invalid' : undefined}
             />
+            {addErrors.price && (
+              <span id="add-price-error" className="error field-error" role="alert">
+                {addErrors.price}
+              </span>
+            )}
           </label>
-          <button
-            type="submit"
-            disabled={
-              addPending || !addName.trim() || !addSpecies.trim() || !addPrice.trim()
-            }
-          >
+          <button type="submit" disabled={addPending}>
             {addPending ? 'Adding…' : 'Add pet'}
           </button>
         </form>
-        {addError && (
+        {addErrors.form && (
           <p className="error add-pet-error" role="alert">
-            {addError}
+            {addErrors.form}
           </p>
         )}
       </section>

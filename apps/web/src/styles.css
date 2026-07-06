@@ -187,6 +187,16 @@ button:hover {
   cursor: not-allowed;
 }
 
+.add-pet input.invalid,
+.add-pet input[aria-invalid='true'] {
+  border-color: #eb5757;
+  outline-color: #eb5757;
+}
+
+.field-error {
+  font-size: 0.8rem;
+}
+
 .add-pet-error {
   margin: 0.5rem 0 0;
 }

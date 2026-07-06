@@ -504,10 +504,114 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add pet' }))
 
     expect(await screen.findByText('name too long')).toBeDefined()
+    // The server message is attached to the offending field, not shown generically.
+    expect(nameInput.getAttribute('aria-invalid')).toBe('true')
     // Values are preserved so the owner can fix and retry.
     expect(nameInput.value).toBe('Rex')
     expect(speciesInput.value).toBe('dog')
     expect(priceInput.value).toBe('125.50')
+  })
+
+  it('flags an empty Name on the Name input and does not POST', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/stats')) return json(statsFor(PETS))
+      return json(PETS)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const nameInput = screen.getByLabelText('Name') as HTMLInputElement
+    const speciesInput = screen.getByLabelText('Species', { selector: 'input' }) as HTMLInputElement
+    const priceInput = screen.getByLabelText('Price') as HTMLInputElement
+    // Leave Name empty but fill the rest, then submit.
+    fireEvent.change(speciesInput, { target: { value: 'dog' } })
+    fireEvent.change(priceInput, { target: { value: '10.00' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add pet' }))
+
+    expect(await screen.findByText('Name is required.')).toBeDefined()
+    expect(nameInput.getAttribute('aria-invalid')).toBe('true')
+    // The request is blocked: no POST /api/pets was made.
+    const postCall = fetchMock.mock.calls.find(
+      (call) => String(call[0]).endsWith('/api/pets') && (call[1] as RequestInit)?.method === 'POST',
+    )
+    expect(postCall).toBeUndefined()
+  })
+
+  it('flags a non-positive price on the Price input and does not POST', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/stats')) return json(statsFor(PETS))
+      return json(PETS)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const nameInput = screen.getByLabelText('Name') as HTMLInputElement
+    const speciesInput = screen.getByLabelText('Species', { selector: 'input' }) as HTMLInputElement
+    const priceInput = screen.getByLabelText('Price') as HTMLInputElement
+    fireEvent.change(nameInput, { target: { value: 'Rex' } })
+    fireEvent.change(speciesInput, { target: { value: 'dog' } })
+    fireEvent.change(priceInput, { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add pet' }))
+
+    expect(await screen.findByText('Price must be greater than zero.')).toBeDefined()
+    expect(priceInput.getAttribute('aria-invalid')).toBe('true')
+    const postCall = fetchMock.mock.calls.find(
+      (call) => String(call[0]).endsWith('/api/pets') && (call[1] as RequestInit)?.method === 'POST',
+    )
+    expect(postCall).toBeUndefined()
+  })
+
+  it('shows a server 400 message on the offending field and clears it on a successful resubmit', async () => {
+    let rejectOnce = true
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/pets') && init?.method === 'POST') {
+        if (rejectOnce) {
+          rejectOnce = false
+          return new Response(JSON.stringify({ error: 'species must be 40 characters or fewer' }), {
+            status: 400,
+            headers: { 'content-type': 'application/json' },
+          })
+        }
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>
+        return new Response(
+          JSON.stringify({ id: 3, status: 'available', ...body }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/stats')) return json(statsFor(PETS))
+      return json(PETS)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const nameInput = screen.getByLabelText('Name') as HTMLInputElement
+    const speciesInput = screen.getByLabelText('Species', { selector: 'input' }) as HTMLInputElement
+    const priceInput = screen.getByLabelText('Price') as HTMLInputElement
+    fireEvent.change(nameInput, { target: { value: 'Rex' } })
+    fireEvent.change(speciesInput, { target: { value: 'dog' } })
+    fireEvent.change(priceInput, { target: { value: '10.00' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add pet' }))
+
+    // The API's message is attached to the Species input, not shown as a generic alert.
+    expect(await screen.findByText('species must be 40 characters or fewer')).toBeDefined()
+    expect(speciesInput.getAttribute('aria-invalid')).toBe('true')
+
+    // Correct the flagged field and resubmit: the error clears and the pet is created.
+    fireEvent.change(speciesInput, { target: { value: 'cat' } })
+    expect(speciesInput.getAttribute('aria-invalid')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Add pet' }))
+
+    expect(await screen.findByText('Rex')).toBeDefined()
+    expect(screen.queryByText('species must be 40 characters or fewer')).toBeNull()
   })
 
   it('cancels a visit by code and refreshes the affected pet’s upcoming visits', async () => {
