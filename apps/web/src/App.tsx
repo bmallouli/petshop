@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 export interface Pet {
   id: number
@@ -6,6 +6,17 @@ export interface Pet {
   species: string
   priceCents: number
   status: 'available' | 'adopted'
+}
+
+export interface Visit {
+  id: number
+  petId: number
+  visitorName: string
+  visitorEmail: string
+  startsAt: string
+  status: 'booked' | 'cancelled'
+  cancellationCode: string
+  createdAt: string
 }
 
 export function formatPrice(priceCents: number): string {
@@ -16,6 +27,104 @@ export interface Stats {
   total: number
   adopted: number
   available: number
+}
+
+function PetCard({ pet, onAdopt }: { pet: Pet; onAdopt: (id: number) => void }) {
+  const [open, setOpen] = useState(false)
+  const [visitorName, setVisitorName] = useState('')
+  const [visitorEmail, setVisitorEmail] = useState('')
+  const [startsAt, setStartsAt] = useState('')
+  const [confirmation, setConfirmation] = useState<Visit | null>(null)
+  const [bookingError, setBookingError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  async function book(event: FormEvent) {
+    event.preventDefault()
+    setBookingError(null)
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/pets/${pet.id}/visits`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          visitorName,
+          visitorEmail,
+          startsAt: new Date(startsAt).toISOString(),
+        }),
+      })
+      const data = (await res.json()) as Visit | { error?: string }
+      if (!res.ok) {
+        setBookingError(('error' in data && data.error) || `API returned ${res.status}`)
+        return
+      }
+      setConfirmation(data as Visit)
+    } catch (err) {
+      setBookingError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <li className={`pet ${pet.status}`}>
+      <span className="name">{pet.name}</span>
+      <span className="species">{pet.species}</span>
+      <span className="price">{formatPrice(pet.priceCents)}</span>
+      {pet.status === 'adopted' ? (
+        <span className="adopted-badge">adopted</span>
+      ) : (
+        <>
+          <button onClick={() => onAdopt(pet.id)}>Adopt</button>
+          <button onClick={() => setOpen((prev) => !prev)}>Book visit</button>
+        </>
+      )}
+
+      {pet.status !== 'adopted' && open && !confirmation && (
+        <form className="booking" onSubmit={(e) => void book(e)}>
+          <label>
+            Your name
+            <input
+              value={visitorName}
+              onChange={(e) => setVisitorName(e.target.value)}
+              required
+            />
+          </label>
+          <label>
+            Email
+            <input
+              type="email"
+              value={visitorEmail}
+              onChange={(e) => setVisitorEmail(e.target.value)}
+              required
+            />
+          </label>
+          <label>
+            Slot
+            <input
+              type="datetime-local"
+              value={startsAt}
+              onChange={(e) => setStartsAt(e.target.value)}
+              required
+            />
+          </label>
+          {bookingError && (
+            <p className="error booking-error" role="alert">
+              {bookingError}
+            </p>
+          )}
+          <button type="submit" disabled={submitting}>
+            Book
+          </button>
+        </form>
+      )}
+
+      {confirmation && (
+        <p className="booking-confirmation" role="status">
+          Visit booked! Save your cancellation code: <code>{confirmation.cancellationCode}</code>
+        </p>
+      )}
+    </li>
+  )
 }
 
 export function App() {
@@ -73,16 +182,7 @@ export function App() {
       ) : (
         <ul className="pets">
           {visiblePets.map((pet) => (
-            <li key={pet.id} className={`pet ${pet.status}`}>
-              <span className="name">{pet.name}</span>
-              <span className="species">{pet.species}</span>
-              <span className="price">{formatPrice(pet.priceCents)}</span>
-              {pet.status === 'adopted' ? (
-                <span className="adopted-badge">adopted</span>
-              ) : (
-                <button onClick={() => void adopt(pet.id)}>Adopt</button>
-              )}
-            </li>
+            <PetCard key={pet.id} pet={pet} onAdopt={(id) => void adopt(id)} />
           ))}
         </ul>
       )}
