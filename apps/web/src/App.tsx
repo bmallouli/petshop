@@ -24,6 +24,21 @@ export function formatPrice(priceCents: number): string {
   return `$${(priceCents / 100).toFixed(2)}`
 }
 
+/** Emoji shown before a pet's name, keyed by species; unknown species fall back to 🐾. */
+const SPECIES_EMOJI: Record<string, string> = {
+  dog: '🐶',
+  cat: '🐱',
+  hamster: '🐹',
+  fish: '🐟',
+  parrot: '🦜',
+  rabbit: '🐰',
+}
+
+/** The emoji for a species (case-insensitive), or the 🐾 fallback for anything unmapped. */
+export function speciesEmoji(species: string): string {
+  return SPECIES_EMOJI[species.trim().toLowerCase()] ?? '🐾'
+}
+
 /**
  * Order pets for display so every available pet comes before every non-available
  * (adopted) one, preserving the original relative order within each group. The
@@ -183,6 +198,9 @@ function PetCard({
 
   return (
     <li className={`pet ${pet.status}`}>
+      <span className="species-emoji" aria-hidden="true">
+        {speciesEmoji(pet.species)}
+      </span>
       <span className="name">{pet.name}</span>
       <span className="species">{pet.species}</span>
       <span className="price">{formatPrice(pet.priceCents)}</span>
@@ -578,6 +596,9 @@ export function App() {
             <ul className="pets adopted-list">
               {adoptedPets.map((pet) => (
                 <li key={pet.id} className="pet adopted">
+                  <span className="species-emoji" aria-hidden="true">
+                    {speciesEmoji(pet.species)}
+                  </span>
                   <span className="name">{pet.name}</span>
                   <span className="species">{pet.species}</span>
                   <span className="price">{formatPrice(pet.priceCents)}</span>
