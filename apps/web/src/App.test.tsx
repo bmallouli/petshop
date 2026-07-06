@@ -155,6 +155,23 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'Pets (1)' })).toBeDefined()
   })
 
+  it('shows a footer with the pet count that follows the species filter (plural and singular)', async () => {
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    // Both seeded pets are on screen: the footer reports the plural count.
+    expect(screen.getByText('2 pets shown')).toBeDefined()
+
+    // Filtering to a single species leaves one card and the footer switches to the singular.
+    const select = screen.getByRole('combobox', { name: 'Species' })
+    fireEvent.change(select, { target: { value: 'dog' } })
+    expect(screen.getByText('1 pet shown')).toBeDefined()
+
+    // No matching pet leaves the footer at zero (plural).
+    fireEvent.change(select, { target: { value: 'fish' } })
+    expect(screen.getByText('0 pets shown')).toBeDefined()
+  })
+
   it('shows (0) in the heading when no pets match the list', async () => {
     render(<App />)
     await screen.findByText('Biscuit')

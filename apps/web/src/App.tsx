@@ -39,6 +39,11 @@ export function sortAvailableFirst(pets: Pet[]): Pet[] {
     .map((entry) => entry.pet)
 }
 
+/** Footer summary of how many pets are currently on screen, pluralised ("1 pet shown" / "8 pets shown"). */
+export function petsShownLabel(count: number): string {
+  return `${count} ${count === 1 ? 'pet' : 'pets'} shown`
+}
+
 /** A pet's upcoming visit as returned by GET /api/pets/:id/visits (no cancellation code). */
 export interface Visit {
   id: number
@@ -518,6 +523,7 @@ export function App() {
           ))}
         </ul>
       )}
+      <footer className="pets-footer">{petsShownLabel(visiblePets.length)}</footer>
       <section className="on-hold">
         <button className="show-on-hold" onClick={() => void toggleOnHold()}>
           {showOnHold ? 'Hide pets on hold' : 'Show pets on hold'}
