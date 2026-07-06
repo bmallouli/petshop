@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto'
 import Fastify, { type FastifyInstance } from 'fastify'
 import type Database from 'better-sqlite3'
 import { z } from 'zod'
-import { toPet, toVisit } from './db.js'
+import { toOwner, toPet, toVisit, type Owner } from './db.js'
 import { sendNotification } from './notifier.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -34,6 +34,21 @@ const listQuerySchema = z.object({
   status: z.enum(['available', 'adopted', 'on_hold']).optional(),
   q: z.string().optional(),
 })
+
+/** Access code presented by the portal login, carried in the `x-owner-code` header. */
+const accessCodeSchema = z.string().min(1)
+
+/**
+ * Resolve the owner identified by the `x-owner-code` request header, or null when
+ * the header is missing/blank or matches no owner. Never trusts the raw header —
+ * it is validated with zod like every other request input.
+ */
+function ownerFromRequest(db: Database.Database, headerValue: unknown): Owner | null {
+  const parsed = accessCodeSchema.safeParse(headerValue)
+  if (!parsed.success) return null
+  const row = db.prepare('SELECT * FROM owners WHERE access_code = ?').get(parsed.data)
+  return row ? toOwner(row as never) : null
+}
 
 export function buildApp(db: Database.Database): FastifyInstance {
   const app = Fastify({ logger: false })
@@ -74,6 +89,12 @@ export function buildApp(db: Database.Database): FastifyInstance {
     }
 
     return { total, adopted: adoptedCount, available: availableCount, bySpecies }
+  })
+
+  app.get('/api/portal/me', async (req, reply) => {
+    const owner = ownerFromRequest(db, req.headers['x-owner-code'])
+    if (!owner) return reply.code(401).send({ error: 'invalid access code' })
+    return { owner: { id: owner.id, name: owner.name } }
   })
 
   app.get('/api/pets', async (req, reply) => {

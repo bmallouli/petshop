@@ -82,6 +82,50 @@ describe('seed: owners and pet ownership', () => {
   })
 })
 
+describe('GET /api/portal/me', () => {
+  it('401s when the x-owner-code header is missing', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/portal/me' })
+    expect(res.statusCode).toBe(401)
+    expect(res.json()).toEqual({ error: 'invalid access code' })
+  })
+
+  it('401s when the x-owner-code header is blank', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/portal/me',
+      headers: { 'x-owner-code': '' },
+    })
+    expect(res.statusCode).toBe(401)
+    expect(res.json()).toEqual({ error: 'invalid access code' })
+  })
+
+  it('401s for an unknown access code', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/portal/me',
+      headers: { 'x-owner-code': 'OWNER-NOBODY-9999' },
+    })
+    expect(res.statusCode).toBe(401)
+    expect(res.json()).toEqual({ error: 'invalid access code' })
+  })
+
+  it('returns the owner id and name for a valid seeded access code, without the access code', async () => {
+    const owner = toOwner(db.prepare(`SELECT * FROM owners WHERE access_code = 'OWNER-ADA-0001'`).get() as never)
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/portal/me',
+      headers: { 'x-owner-code': 'OWNER-ADA-0001' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ owner: { id: owner.id, name: 'Ada Lovelace' } })
+
+    const body = res.json() as { owner: Record<string, unknown> }
+    expect(body.owner).not.toHaveProperty('accessCode')
+    expect(body.owner).not.toHaveProperty('access_code')
+    expect(body.owner).not.toHaveProperty('email')
+  })
+})
+
 describe('GET /health', () => {
   it('reports ok', async () => {
     const res = await app.inject({ method: 'GET', url: '/health' })
