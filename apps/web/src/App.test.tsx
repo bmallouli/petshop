@@ -172,6 +172,29 @@ describe('App', () => {
     expect(screen.getByText('0 pets shown')).toBeDefined()
   })
 
+  it('updates the footer count as the name search narrows the on-screen list', async () => {
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    // Both seeded pets are shown before searching.
+    expect(screen.getByText('2 pets shown')).toBeDefined()
+
+    // A name search narrows the list to the single matching pet (singular text).
+    const search = screen.getByRole('searchbox', { name: 'Search' })
+    fireEvent.change(search, { target: { value: 'Bisc' } })
+    expect(screen.getByText('Biscuit')).toBeDefined()
+    expect(screen.queryByText('Mochi')).toBeNull()
+    expect(screen.getByText('1 pet shown')).toBeDefined()
+
+    // A non-matching query empties the list and the footer reports zero.
+    fireEvent.change(search, { target: { value: 'zzz' } })
+    expect(screen.getByText('0 pets shown')).toBeDefined()
+
+    // Clearing the search restores the full count.
+    fireEvent.change(search, { target: { value: '' } })
+    expect(screen.getByText('2 pets shown')).toBeDefined()
+  })
+
   it('shows (0) in the heading when no pets match the list', async () => {
     render(<App />)
     await screen.findByText('Biscuit')

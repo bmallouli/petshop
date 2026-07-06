@@ -283,6 +283,7 @@ export function App() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [species, setSpecies] = useState('all')
+  const [nameQuery, setNameQuery] = useState('')
   const [visits, setVisits] = useState<Record<number, VisitsState | undefined>>({})
   const [showOnHold, setShowOnHold] = useState(false)
   const [onHoldPets, setOnHoldPets] = useState<Pet[] | null>(null)
@@ -484,8 +485,15 @@ export function App() {
   if (!pets) return <p>Loading pets…</p>
 
   const allSpecies = [...new Set(pets.map((pet) => pet.species))].sort()
+  // The footer counts what is on screen, so both the species filter and the
+  // case-insensitive name search narrow the list (and thus the count) together.
+  const query = nameQuery.trim().toLowerCase()
   const visiblePets = sortAvailableFirst(
-    species === 'all' ? pets : pets.filter((pet) => pet.species === species),
+    pets.filter(
+      (pet) =>
+        (species === 'all' || pet.species === species) &&
+        (query === '' || pet.name.toLowerCase().includes(query)),
+    ),
   )
 
   return (
@@ -505,9 +513,19 @@ export function App() {
           ))}
         </select>
       </label>
+      <label>
+        Search
+        <input
+          type="search"
+          className="pet-search"
+          placeholder="Search by name"
+          value={nameQuery}
+          onChange={(e) => setNameQuery(e.target.value)}
+        />
+      </label>
       <h2 className="pets-heading">Pets ({visiblePets.length})</h2>
       {visiblePets.length === 0 ? (
-        <p>No pets match this species.</p>
+        <p>{query === '' ? 'No pets match this species.' : 'No pets match your search.'}</p>
       ) : (
         <ul className="pets">
           {visiblePets.map((pet) => (
