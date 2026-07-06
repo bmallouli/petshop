@@ -959,3 +959,41 @@ describe('App', () => {
     expect(screen.queryByText(/cancelled\./)).toBeNull()
   })
 })
+
+describe('formatVisitTime', () => {
+  beforeEach(() => {
+    // Fix "now" to a mid-afternoon local time so ±a few hours stays on the same day.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 6, 6, 14, 0, 0))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('prefixes a visit later today with "Today, "', () => {
+    const startsAt = new Date(2026, 6, 6, 17, 30, 0).toISOString()
+    const result = formatVisitTime(startsAt)
+    expect(result.startsWith('Today, ')).toBe(true)
+    expect(result).toBe(`Today, ${new Date(startsAt).toLocaleString()}`)
+  })
+
+  it('prefixes a visit tomorrow with "Tomorrow, "', () => {
+    const startsAt = new Date(2026, 6, 7, 9, 0, 0).toISOString()
+    const result = formatVisitTime(startsAt)
+    expect(result.startsWith('Tomorrow, ')).toBe(true)
+    expect(result).toBe(`Tomorrow, ${new Date(startsAt).toLocaleString()}`)
+  })
+
+  it('leaves visits on other days unprefixed', () => {
+    const startsAt = new Date(2026, 6, 9, 11, 0, 0).toISOString()
+    const result = formatVisitTime(startsAt)
+    expect(result).toBe(new Date(startsAt).toLocaleString())
+    expect(result.startsWith('Today, ')).toBe(false)
+    expect(result.startsWith('Tomorrow, ')).toBe(false)
+  })
+
+  it('falls back to the raw string when unparseable', () => {
+    expect(formatVisitTime('not a date')).toBe('not a date')
+  })
+})
