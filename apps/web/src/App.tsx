@@ -207,6 +207,12 @@ export function App() {
   const [showOnHold, setShowOnHold] = useState(false)
   const [onHoldPets, setOnHoldPets] = useState<Pet[] | null>(null)
 
+  const [addName, setAddName] = useState('')
+  const [addSpecies, setAddSpecies] = useState('')
+  const [addPrice, setAddPrice] = useState('')
+  const [addPending, setAddPending] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+
   const [cancelVisitId, setCancelVisitId] = useState('')
   const [cancelCode, setCancelCode] = useState('')
   const [cancelPending, setCancelPending] = useState(false)
@@ -306,6 +312,39 @@ export function App() {
     }
   }
 
+  async function addPet(event: FormEvent) {
+    event.preventDefault()
+    const name = addName.trim()
+    const species = addSpecies.trim()
+    const dollars = Number(addPrice)
+    if (!name || !species || !addPrice.trim() || Number.isNaN(dollars) || addPending) return
+
+    setAddPending(true)
+    setAddError(null)
+    try {
+      const res = await fetch('/api/pets', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name, species, priceCents: Math.round(dollars * 100) }),
+      })
+      const data = (await res.json()) as Pet | { error?: string }
+      if (!res.ok) {
+        setAddError(('error' in data && data.error) || `API returned ${res.status}`)
+        return
+      }
+      // Prepend the created pet so it appears without a full reload; keep the form's
+      // typed values only on failure, so clear them here on success.
+      setPets((prev) => (prev ? [data as Pet, ...prev] : [data as Pet]))
+      setAddName('')
+      setAddSpecies('')
+      setAddPrice('')
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAddPending(false)
+    }
+  }
+
   const loadVisits = useCallback(async (id: number) => {
     setVisits((prev) => ({ ...prev, [id]: { status: 'loading' } }))
     try {
@@ -393,6 +432,47 @@ export function App() {
               ))}
             </ul>
           ))}
+      </section>
+      <section className="add-pet">
+        <h2>Add a pet</h2>
+        <p className="hint">Register a new pet to list it for adoption.</p>
+        <form onSubmit={(e) => void addPet(e)}>
+          <label>
+            Name
+            <input type="text" value={addName} onChange={(e) => setAddName(e.target.value)} />
+          </label>
+          <label>
+            Species
+            <input
+              type="text"
+              value={addSpecies}
+              onChange={(e) => setAddSpecies(e.target.value)}
+            />
+          </label>
+          <label>
+            Price
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={addPrice}
+              onChange={(e) => setAddPrice(e.target.value)}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={
+              addPending || !addName.trim() || !addSpecies.trim() || !addPrice.trim()
+            }
+          >
+            {addPending ? 'Adding…' : 'Add pet'}
+          </button>
+        </form>
+        {addError && (
+          <p className="error add-pet-error" role="alert">
+            {addError}
+          </p>
+        )}
       </section>
       <section className="cancel-visit">
         <h2>Cancel a visit</h2>

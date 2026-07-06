@@ -430,6 +430,86 @@ describe('App', () => {
     expect(within(biscuitRow).queryByText(/Save your cancellation code/)).toBeNull()
   })
 
+  it('adds a pet via the form and shows it in the list without a reload', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/pets') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>
+        expect(body).toEqual({ name: 'Rex', species: 'dog', priceCents: 12550 })
+        return new Response(
+          JSON.stringify({
+            id: 3,
+            name: 'Rex',
+            species: 'dog',
+            priceCents: 12550,
+            status: 'available',
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/stats')) return json(statsFor(PETS))
+      return json(PETS)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const nameInput = screen.getByLabelText('Name') as HTMLInputElement
+    const speciesInput = screen.getByLabelText('Species', { selector: 'input' }) as HTMLInputElement
+    const priceInput = screen.getByLabelText('Price') as HTMLInputElement
+    fireEvent.change(nameInput, { target: { value: 'Rex' } })
+    fireEvent.change(speciesInput, { target: { value: 'dog' } })
+    fireEvent.change(priceInput, { target: { value: '125.50' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add pet' }))
+
+    // The created pet appears with its dollar-formatted price.
+    expect(await screen.findByText('Rex')).toBeDefined()
+    expect(screen.getByText('$125.50')).toBeDefined()
+
+    const postCall = fetchMock.mock.calls.find(
+      (call) => String(call[0]).endsWith('/api/pets') && (call[1] as RequestInit)?.method === 'POST',
+    )
+    expect(postCall).toBeDefined()
+
+    // Inputs are cleared after a successful add.
+    expect(nameInput.value).toBe('')
+    expect(speciesInput.value).toBe('')
+    expect(priceInput.value).toBe('')
+  })
+
+  it('keeps the typed values and shows an error when adding a pet fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/pets') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ error: 'name too long' }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      if (url.endsWith('/api/stats')) return json(statsFor(PETS))
+      return json(PETS)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const nameInput = screen.getByLabelText('Name') as HTMLInputElement
+    const speciesInput = screen.getByLabelText('Species', { selector: 'input' }) as HTMLInputElement
+    const priceInput = screen.getByLabelText('Price') as HTMLInputElement
+    fireEvent.change(nameInput, { target: { value: 'Rex' } })
+    fireEvent.change(speciesInput, { target: { value: 'dog' } })
+    fireEvent.change(priceInput, { target: { value: '125.50' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add pet' }))
+
+    expect(await screen.findByText('name too long')).toBeDefined()
+    // Values are preserved so the owner can fix and retry.
+    expect(nameInput.value).toBe('Rex')
+    expect(speciesInput.value).toBe('dog')
+    expect(priceInput.value).toBe('125.50')
+  })
+
   it('cancels a visit by code and refreshes the affected pet’s upcoming visits', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input)
