@@ -39,6 +39,11 @@ export function sortAvailableFirst(pets: Pet[]): Pet[] {
     .map((entry) => entry.pet)
 }
 
+/** Footer summary of how many pets are currently on screen, pluralised ("1 pet shown" / "8 pets shown"). */
+export function petsShownLabel(count: number): string {
+  return `${count} ${count === 1 ? 'pet' : 'pets'} shown`
+}
+
 /** A pet's upcoming visit as returned by GET /api/pets/:id/visits (no cancellation code). */
 export interface Visit {
   id: number
@@ -278,6 +283,7 @@ export function App() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [species, setSpecies] = useState('all')
+  const [nameQuery, setNameQuery] = useState('')
   const [visits, setVisits] = useState<Record<number, VisitsState | undefined>>({})
   const [showOnHold, setShowOnHold] = useState(false)
   const [onHoldPets, setOnHoldPets] = useState<Pet[] | null>(null)
@@ -479,8 +485,15 @@ export function App() {
   if (!pets) return <p>Loading pets…</p>
 
   const allSpecies = [...new Set(pets.map((pet) => pet.species))].sort()
+  // The footer counts what is on screen, so both the species filter and the
+  // case-insensitive name search narrow the list (and thus the count) together.
+  const query = nameQuery.trim().toLowerCase()
   const visiblePets = sortAvailableFirst(
-    species === 'all' ? pets : pets.filter((pet) => pet.species === species),
+    pets.filter(
+      (pet) =>
+        (species === 'all' || pet.species === species) &&
+        (query === '' || pet.name.toLowerCase().includes(query)),
+    ),
   )
 
   return (
@@ -500,9 +513,19 @@ export function App() {
           ))}
         </select>
       </label>
+      <label>
+        Search
+        <input
+          type="search"
+          className="pet-search"
+          placeholder="Search by name"
+          value={nameQuery}
+          onChange={(e) => setNameQuery(e.target.value)}
+        />
+      </label>
       <h2 className="pets-heading">Pets ({visiblePets.length})</h2>
       {visiblePets.length === 0 ? (
-        <p>No pets match this species.</p>
+        <p>{query === '' ? 'No pets match this species.' : 'No pets match your search.'}</p>
       ) : (
         <ul className="pets">
           {visiblePets.map((pet) => (
@@ -518,6 +541,7 @@ export function App() {
           ))}
         </ul>
       )}
+      <footer className="pets-footer">{petsShownLabel(visiblePets.length)}</footer>
       <section className="on-hold">
         <button className="show-on-hold" onClick={() => void toggleOnHold()}>
           {showOnHold ? 'Hide pets on hold' : 'Show pets on hold'}
