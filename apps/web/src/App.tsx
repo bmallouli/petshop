@@ -500,6 +500,7 @@ export function App() {
           ))}
         </select>
       </label>
+      <h2 className="pets-heading">Pets ({visiblePets.length})</h2>
       {visiblePets.length === 0 ? (
         <p>No pets match this species.</p>
       ) : (
