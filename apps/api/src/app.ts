@@ -153,6 +153,19 @@ export function buildApp(db: Database.Database): FastifyInstance {
     return rows.map((row) => toPet(row as never))
   })
 
+  // Pets adopted within the last month, most recently adopted first. Only pets with a
+  // recorded `adopted_at` qualify — pets adopted before that column existed are omitted.
+  app.get('/api/pets/adopted-recently', async () => {
+    const rows = db
+      .prepare(
+        `SELECT * FROM pets
+         WHERE status = 'adopted' AND adopted_at IS NOT NULL AND adopted_at >= datetime('now', '-1 month')
+         ORDER BY adopted_at DESC, id DESC`,
+      )
+      .all()
+    return rows.map((row) => toPet(row as never))
+  })
+
   app.get('/api/pets/:id', async (req, reply) => {
     const id = Number((req.params as { id: string }).id)
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'id must be an integer' })
@@ -180,7 +193,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
     if (toPet(row as never).status === 'adopted') {
       return reply.code(409).send({ error: `pet ${id} is already adopted` })
     }
-    db.prepare(`UPDATE pets SET status = 'adopted' WHERE id = ?`).run(id)
+    db.prepare(`UPDATE pets SET status = 'adopted', adopted_at = datetime('now') WHERE id = ?`).run(id)
     const updated = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
     sendNotification('pet-adopted', { petId: id })
     return toPet(updated as never)

@@ -7,7 +7,7 @@ import {
   waitForElementToBeRemoved,
   within,
 } from '@testing-library/react'
-import { App, formatVisitTime, type Pet, type Stats } from './App.js'
+import { App, formatAdoptedAt, formatVisitTime, type Pet, type Stats } from './App.js'
 
 const PETS: Pet[] = [
   { id: 1, name: 'Biscuit', species: 'dog', priceCents: 89900, status: 'available' },
@@ -612,6 +612,54 @@ describe('App', () => {
 
     expect(await screen.findByText('Rex')).toBeDefined()
     expect(screen.queryByText('species must be 40 characters or fewer')).toBeNull()
+  })
+
+  it('reveals pets adopted in the last month on demand', async () => {
+    const adopted: Pet = {
+      id: 2,
+      name: 'Mochi',
+      species: 'cat',
+      priceCents: 64900,
+      status: 'adopted',
+      adoptedAt: '2026-07-01 12:00:00',
+    }
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/pets/adopted-recently')) return json([adopted])
+      if (url.endsWith('/api/stats')) return json(statsFor(PETS))
+      return json(PETS)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show adopted this month' }))
+
+    const list = (await screen.findByText('adopted ' + formatAdoptedAt(adopted.adoptedAt))).closest(
+      'ul',
+    ) as HTMLElement
+    expect(within(list).getByText('Mochi')).toBeDefined()
+    expect(fetchMock).toHaveBeenCalledWith('/api/pets/adopted-recently')
+  })
+
+  it('shows an empty state when no pets were adopted in the last month', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/pets/adopted-recently')) return json([])
+      if (url.endsWith('/api/stats')) return json(statsFor(PETS))
+      return json(PETS)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show adopted this month' }))
+
+    expect(
+      await screen.findByText('No pets have been adopted in the last month.'),
+    ).toBeDefined()
   })
 
   it('cancels a visit by code and refreshes the affected pet’s upcoming visits', async () => {
