@@ -7,7 +7,7 @@ export interface Pet {
   name: string
   species: string
   priceCents: number
-  status: 'available' | 'adopted'
+  status: 'available' | 'adopted' | 'on_hold'
   createdAt: string
 }
 
@@ -44,7 +44,7 @@ export function openDb(path: string): Database.Database {
       name        TEXT NOT NULL,
       species     TEXT NOT NULL,
       price_cents INTEGER NOT NULL,
-      status      TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'adopted')),
+      status      TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'adopted', 'on_hold')),
       created_at  TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `)
@@ -76,7 +76,7 @@ interface PetRow {
   name: string
   species: string
   price_cents: number
-  status: 'available' | 'adopted'
+  status: 'available' | 'adopted' | 'on_hold'
   created_at: string
 }
 

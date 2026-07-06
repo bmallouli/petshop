@@ -82,6 +82,15 @@ describe('GET /api/stats', () => {
     expect(stats.available).toBe(pets.filter((p) => p.status === 'available').length)
   })
 
+  it('does not count on-hold pets as available', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/1/hold' })
+
+    const res = await app.inject({ method: 'GET', url: '/api/stats' })
+    expect(res.statusCode).toBe(200)
+    // Pet 1 is neither available nor adopted while on hold; total still includes it.
+    expect(res.json()).toMatchObject({ total: 8, adopted: 0, available: 7 })
+  })
+
   it('breaks down totals and availability by species', async () => {
     await app.inject({ method: 'POST', url: '/api/pets/1/adopt' })
 
@@ -241,6 +250,92 @@ describe('POST /api/pets/:id/adopt', () => {
   })
 })
 
+describe('POST /api/pets/:id/hold', () => {
+  it('marks an available pet on hold', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/pets/1/hold' })
+    expect(res.statusCode).toBe(200)
+    expect((res.json() as Pet).status).toBe('on_hold')
+
+    const check = await app.inject({ method: 'GET', url: '/api/pets/1' })
+    expect((check.json() as Pet).status).toBe('on_hold')
+  })
+
+  it('hides an on-hold pet from the default adoption list', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/1/hold' })
+
+    const list = await app.inject({ method: 'GET', url: '/api/pets' })
+    const pets = list.json() as Pet[]
+    expect(pets.length).toBe(7)
+    expect(pets.some((p) => p.id === 1)).toBe(false)
+  })
+
+  it('still lists on-hold pets when filtered by status=on_hold', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/1/hold' })
+
+    const res = await app.inject({ method: 'GET', url: '/api/pets?status=on_hold' })
+    const pets = res.json() as Pet[]
+    expect(pets.length).toBe(1)
+    expect(pets[0]).toMatchObject({ id: 1, status: 'on_hold' })
+  })
+
+  it('404s on a missing pet', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/pets/999/hold' })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ error: 'pet 999 not found' })
+  })
+
+  it('rejects holding a pet that is already on hold', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/1/hold' })
+    const res = await app.inject({ method: 'POST', url: '/api/pets/1/hold' })
+    expect(res.statusCode).toBe(409)
+    expect(res.json()).toEqual({ error: 'pet 1 is already on hold' })
+  })
+
+  it('rejects holding an adopted pet', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/3/adopt' })
+    const res = await app.inject({ method: 'POST', url: '/api/pets/3/hold' })
+    expect(res.statusCode).toBe(409)
+    expect(res.json()).toEqual({ error: 'pet 3 is adopted and cannot be held' })
+  })
+
+  it('rejects a non-integer id', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/pets/abc/hold' })
+    expect(res.statusCode).toBe(400)
+  })
+})
+
+describe('POST /api/pets/:id/release', () => {
+  it('returns an on-hold pet to available and back onto the adoption list', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/1/hold' })
+
+    const res = await app.inject({ method: 'POST', url: '/api/pets/1/release' })
+    expect(res.statusCode).toBe(200)
+    expect((res.json() as Pet).status).toBe('available')
+
+    const list = await app.inject({ method: 'GET', url: '/api/pets' })
+    const pets = list.json() as Pet[]
+    expect(pets.length).toBe(8)
+    expect(pets.some((p) => p.id === 1)).toBe(true)
+  })
+
+  it('404s on a missing pet', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/pets/999/release' })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ error: 'pet 999 not found' })
+  })
+
+  it('rejects releasing a pet that is not on hold', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/pets/1/release' })
+    expect(res.statusCode).toBe(409)
+    expect(res.json()).toEqual({ error: 'pet 1 is not on hold' })
+  })
+
+  it('rejects a non-integer id', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/pets/abc/release' })
+    expect(res.statusCode).toBe(400)
+  })
+})
+
 describe('POST /api/pets/:id/visits', () => {
   const validBody = {
     visitorName: 'Ada Lovelace',
@@ -294,6 +389,20 @@ describe('POST /api/pets/:id/visits', () => {
     const res = await app.inject({ method: 'POST', url: '/api/pets/3/visits', payload: validBody })
     expect(res.statusCode).toBe(409)
     expect(res.json()).toEqual({ error: 'pet 3 is not available for visits' })
+  })
+
+  it('rejects booking a visit for an on-hold pet', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/3/hold' })
+    const res = await app.inject({ method: 'POST', url: '/api/pets/3/visits', payload: validBody })
+    expect(res.statusCode).toBe(409)
+    expect(res.json()).toEqual({ error: 'pet 3 is not available for visits' })
+  })
+
+  it('allows booking again once an on-hold pet is released', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/3/hold' })
+    await app.inject({ method: 'POST', url: '/api/pets/3/release' })
+    const res = await app.inject({ method: 'POST', url: '/api/pets/3/visits', payload: validBody })
+    expect(res.statusCode).toBe(201)
   })
 
   it('404s on a missing pet', async () => {

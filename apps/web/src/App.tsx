@@ -5,7 +5,7 @@ export interface Pet {
   name: string
   species: string
   priceCents: number
-  status: 'available' | 'adopted'
+  status: 'available' | 'adopted' | 'on_hold'
 }
 
 export interface Visit {
@@ -54,11 +54,15 @@ export interface Stats {
 function PetCard({
   pet,
   onAdopt,
+  onHold,
+  onRelease,
   visitsState,
   onToggleVisits,
 }: {
   pet: Pet
   onAdopt: (id: number) => void
+  onHold: (id: number) => void
+  onRelease: (id: number) => void
   visitsState: VisitsState | undefined
   onToggleVisits: () => void
 }) {
@@ -102,16 +106,22 @@ function PetCard({
       <span className="name">{pet.name}</span>
       <span className="species">{pet.species}</span>
       <span className="price">{formatPrice(pet.priceCents)}</span>
-      {pet.status === 'adopted' ? (
-        <span className="adopted-badge">adopted</span>
-      ) : (
+      {pet.status === 'adopted' && <span className="adopted-badge">adopted</span>}
+      {pet.status === 'on_hold' && (
+        <>
+          <span className="on-hold-badge">on hold</span>
+          <button onClick={() => onRelease(pet.id)}>Release</button>
+        </>
+      )}
+      {pet.status === 'available' && (
         <>
           <button onClick={() => onAdopt(pet.id)}>Adopt</button>
+          <button onClick={() => onHold(pet.id)}>Hold</button>
           <button onClick={() => setOpen((prev) => !prev)}>Book visit</button>
         </>
       )}
 
-      {pet.status !== 'adopted' && open && !confirmation && (
+      {pet.status === 'available' && open && !confirmation && (
         <form className="booking" onSubmit={(e) => void book(e)}>
           <label>
             Your name
@@ -194,6 +204,8 @@ export function App() {
   const [error, setError] = useState<string | null>(null)
   const [species, setSpecies] = useState('all')
   const [visits, setVisits] = useState<Record<number, VisitsState | undefined>>({})
+  const [showOnHold, setShowOnHold] = useState(false)
+  const [onHoldPets, setOnHoldPets] = useState<Pet[] | null>(null)
 
   const [cancelVisitId, setCancelVisitId] = useState('')
   const [cancelCode, setCancelCode] = useState('')
@@ -220,9 +232,36 @@ export function App() {
     void load()
   }, [load])
 
+  const loadOnHold = useCallback(async () => {
+    const res = await fetch('/api/pets?status=on_hold')
+    if (res.ok) setOnHoldPets((await res.json()) as Pet[])
+  }, [])
+
   async function adopt(id: number) {
     await fetch(`/api/pets/${id}/adopt`, { method: 'POST' })
     await load()
+  }
+
+  async function hold(id: number) {
+    await fetch(`/api/pets/${id}/hold`, { method: 'POST' })
+    await load()
+    if (showOnHold) await loadOnHold()
+  }
+
+  async function release(id: number) {
+    await fetch(`/api/pets/${id}/release`, { method: 'POST' })
+    await load()
+    if (showOnHold) await loadOnHold()
+  }
+
+  async function toggleOnHold() {
+    if (showOnHold) {
+      setShowOnHold(false)
+      setOnHoldPets(null)
+    } else {
+      setShowOnHold(true)
+      await loadOnHold()
+    }
   }
 
   async function cancelVisit(event: FormEvent) {
@@ -323,12 +362,38 @@ export function App() {
               key={pet.id}
               pet={pet}
               onAdopt={(id) => void adopt(id)}
+              onHold={(id) => void hold(id)}
+              onRelease={(id) => void release(id)}
               visitsState={visits[pet.id]}
               onToggleVisits={() => toggleVisits(pet.id)}
             />
           ))}
         </ul>
       )}
+      <section className="on-hold">
+        <button className="show-on-hold" onClick={() => void toggleOnHold()}>
+          {showOnHold ? 'Hide pets on hold' : 'Show pets on hold'}
+        </button>
+        {showOnHold &&
+          onHoldPets &&
+          (onHoldPets.length === 0 ? (
+            <p className="no-on-hold">No pets are on hold.</p>
+          ) : (
+            <ul className="pets on-hold-list">
+              {onHoldPets.map((pet) => (
+                <PetCard
+                  key={pet.id}
+                  pet={pet}
+                  onAdopt={(id) => void adopt(id)}
+                  onHold={(id) => void hold(id)}
+                  onRelease={(id) => void release(id)}
+                  visitsState={visits[pet.id]}
+                  onToggleVisits={() => toggleVisits(pet.id)}
+                />
+              ))}
+            </ul>
+          ))}
+      </section>
       <section className="cancel-visit">
         <h2>Cancel a visit</h2>
         <p className="hint">

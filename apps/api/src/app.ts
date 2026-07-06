@@ -31,7 +31,7 @@ const cancelVisitSchema = z.object({
 
 const listQuerySchema = z.object({
   species: z.string().min(1).optional(),
-  status: z.enum(['available', 'adopted']).optional(),
+  status: z.enum(['available', 'adopted', 'on_hold']).optional(),
   q: z.string().optional(),
 })
 
@@ -46,12 +46,16 @@ export function buildApp(db: Database.Database): FastifyInstance {
   app.get('/version', async () => ({ version: pkg.version, uptimeSeconds: process.uptime() }))
 
   app.get('/api/stats', async () => {
-    const { total, adopted } = db
+    const { total, adopted, available } = db
       .prepare(
-        `SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'adopted' THEN 1 ELSE 0 END) AS adopted FROM pets`,
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN status = 'adopted' THEN 1 ELSE 0 END) AS adopted,
+                SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) AS available
+         FROM pets`,
       )
-      .get() as { total: number; adopted: number | null }
+      .get() as { total: number; adopted: number | null; available: number | null }
     const adoptedCount = adopted ?? 0
+    const availableCount = available ?? 0
 
     const speciesRows = db
       .prepare(
@@ -69,7 +73,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
       bySpecies[row.species] = { total: row.total, available: row.available ?? 0 }
     }
 
-    return { total, adopted: adoptedCount, available: total - adoptedCount, bySpecies }
+    return { total, adopted: adoptedCount, available: availableCount, bySpecies }
   })
 
   app.get('/api/pets', async (req, reply) => {
@@ -86,6 +90,9 @@ export function buildApp(db: Database.Database): FastifyInstance {
     if (status) {
       where.push('status = ?')
       params.push(status)
+    } else {
+      // On-hold pets are temporarily hidden from the adoption list unless explicitly requested.
+      where.push("status != 'on_hold'")
     }
     if (q) {
       const escaped = q.toLowerCase().replace(/[%_\\]/g, (c) => `\\${c}`)
@@ -130,6 +137,36 @@ export function buildApp(db: Database.Database): FastifyInstance {
     return toPet(updated as never)
   })
 
+  app.post('/api/pets/:id/hold', async (req, reply) => {
+    const id = Number((req.params as { id: string }).id)
+    if (!Number.isInteger(id)) return reply.code(400).send({ error: 'id must be an integer' })
+    const row = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
+    if (!row) return reply.code(404).send({ error: `pet ${id} not found` })
+    const status = toPet(row as never).status
+    if (status === 'adopted') {
+      return reply.code(409).send({ error: `pet ${id} is adopted and cannot be held` })
+    }
+    if (status === 'on_hold') {
+      return reply.code(409).send({ error: `pet ${id} is already on hold` })
+    }
+    db.prepare(`UPDATE pets SET status = 'on_hold' WHERE id = ?`).run(id)
+    const updated = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
+    return toPet(updated as never)
+  })
+
+  app.post('/api/pets/:id/release', async (req, reply) => {
+    const id = Number((req.params as { id: string }).id)
+    if (!Number.isInteger(id)) return reply.code(400).send({ error: 'id must be an integer' })
+    const row = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
+    if (!row) return reply.code(404).send({ error: `pet ${id} not found` })
+    if (toPet(row as never).status !== 'on_hold') {
+      return reply.code(409).send({ error: `pet ${id} is not on hold` })
+    }
+    db.prepare(`UPDATE pets SET status = 'available' WHERE id = ?`).run(id)
+    const updated = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
+    return toPet(updated as never)
+  })
+
   app.get('/api/pets/:id/visits', async (req, reply) => {
     const id = Number((req.params as { id: string }).id)
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'id must be an integer' })
@@ -155,7 +192,8 @@ export function buildApp(db: Database.Database): FastifyInstance {
 
     const petRow = db.prepare('SELECT * FROM pets WHERE id = ?').get(id)
     if (!petRow) return reply.code(404).send({ error: `pet ${id} not found` })
-    if (toPet(petRow as never).status === 'adopted') {
+    // Only available pets accept visits — adopted and on-hold pets are blocked alike.
+    if (toPet(petRow as never).status !== 'available') {
       return reply.code(409).send({ error: `pet ${id} is not available for visits` })
     }
 

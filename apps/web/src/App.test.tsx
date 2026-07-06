@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitForElementToBeRemoved,
+  within,
+} from '@testing-library/react'
 import { App, formatVisitTime, type Pet, type Stats } from './App.js'
 
 const PETS: Pet[] = [
@@ -230,6 +237,75 @@ describe('App', () => {
 
     const mochiRow = screen.getByText('Mochi').closest('li') as HTMLElement
     expect(within(mochiRow).queryByRole('button', { name: 'Book visit' })).toBeNull()
+  })
+
+  it('offers a Hold button on available pet cards and holds the pet', async () => {
+    let biscuitHeld = false
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/pets/1/hold')) {
+        biscuitHeld = true
+        return new Response(null, { status: 200 })
+      }
+      const remaining = biscuitHeld ? PETS.filter((pet) => pet.id !== 1) : PETS
+      if (url.endsWith('/api/stats')) return json(statsFor(remaining))
+      return json(remaining)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const biscuitRow = screen.getByText('Biscuit').closest('li') as HTMLElement
+    // Adopted pets get no Hold control.
+    const mochiRow = screen.getByText('Mochi').closest('li') as HTMLElement
+    expect(within(mochiRow).queryByRole('button', { name: 'Hold' })).toBeNull()
+
+    fireEvent.click(within(biscuitRow).getByRole('button', { name: 'Hold' }))
+
+    // Once held, the pet drops off the (default) adoption list.
+    await waitForElementToBeRemoved(() => screen.queryByText('Biscuit'))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/pets/1/hold',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('reveals pets on hold and lets staff release them', async () => {
+    const heldPet: Pet = { id: 1, name: 'Biscuit', species: 'dog', priceCents: 89900, status: 'on_hold' }
+    let released = false
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/pets/1/release')) {
+        released = true
+        return new Response(null, { status: 200 })
+      }
+      if (url.includes('status=on_hold')) return json(released ? [] : [heldPet])
+      if (url.endsWith('/api/stats')) return json(statsFor(PETS))
+      return json(PETS.filter((pet) => pet.id !== 1))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Mochi')
+    // On-hold pets are hidden from the default list.
+    expect(screen.queryByText('Biscuit')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show pets on hold' }))
+
+    const heldRow = (await screen.findByText('Biscuit')).closest('li') as HTMLElement
+    expect(within(heldRow).getByText('on hold')).toBeDefined()
+    // On-hold cards mirror adopted ones: no Adopt or Book-visit controls.
+    expect(within(heldRow).queryByRole('button', { name: 'Adopt' })).toBeNull()
+    expect(within(heldRow).queryByRole('button', { name: 'Book visit' })).toBeNull()
+
+    fireEvent.click(within(heldRow).getByRole('button', { name: 'Release' }))
+
+    await waitForElementToBeRemoved(() => screen.queryByText('Biscuit'))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/pets/1/release',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 
   it('books a visit and shows the returned cancellation code', async () => {
