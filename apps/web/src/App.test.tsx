@@ -819,6 +819,15 @@ describe('App', () => {
     expect(JSON.parse(init?.body as string)).toEqual({ cancellationCode: 'secret-code' })
   })
 
+  it('shows a footer with the demo notice on the page', async () => {
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const footer = screen.getByText('petshop — Fleet demo')
+    expect(footer).toBeDefined()
+    expect(footer.tagName).toBe('FOOTER')
+  })
+
   it('maps each seeded species to its emoji and falls back to 🐾 for anything else', () => {
     expect(speciesEmoji('dog')).toBe('🐶')
     expect(speciesEmoji('cat')).toBe('🐱')

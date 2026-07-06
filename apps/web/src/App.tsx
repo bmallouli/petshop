@@ -296,6 +296,11 @@ function PetCard({
   )
 }
 
+/** Site-wide footer shown on every page, carrying the demo notice. */
+export function SiteFooter() {
+  return <footer className="site-footer">petshop — Fleet demo</footer>
+}
+
 export function App() {
   const [pets, setPets] = useState<Pet[] | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
@@ -499,8 +504,20 @@ export function App() {
     }
   }
 
-  if (error) return <p className="error">Could not load pets: {error}</p>
-  if (!pets) return <p>Loading pets…</p>
+  if (error)
+    return (
+      <>
+        <p className="error">Could not load pets: {error}</p>
+        <SiteFooter />
+      </>
+    )
+  if (!pets)
+    return (
+      <>
+        <p>Loading pets…</p>
+        <SiteFooter />
+      </>
+    )
 
   const allSpecies = [...new Set(pets.map((pet) => pet.species))].sort()
   // The footer counts what is on screen, so both the species filter and the
@@ -731,6 +748,7 @@ export function App() {
           </div>
         )}
       </section>
+      <SiteFooter />
     </main>
   )
 }
