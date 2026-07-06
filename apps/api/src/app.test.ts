@@ -1053,3 +1053,79 @@ describe('GET /api/pets/:id/visits', () => {
     expect(visits[0]?.id).toBe((booked.json() as Visit).id)
   })
 })
+
+describe('GET /api/visits/upcoming', () => {
+  const futureBody = {
+    visitorName: 'Ada Lovelace',
+    visitorEmail: 'ada@example.com',
+    startsAt: '2030-08-01T10:00:00.000Z',
+  }
+
+  it('returns 200 with a numeric count', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/visits/upcoming' })
+    expect(res.statusCode).toBe(200)
+    expect(typeof (res.json() as { count: number }).count).toBe('number')
+  })
+
+  it('returns 0 when there are no upcoming visits', async () => {
+    // The empty store has no pets and therefore no visits at all.
+    const emptyApp = buildApp(openDb(':memory:'))
+    const res = await emptyApp.inject({ method: 'GET', url: '/api/visits/upcoming' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ count: 0 })
+  })
+
+  it('counts the seeded future visit', async () => {
+    // The seed inserts one future booked visit (Grace, pet 5, 2030).
+    const res = await app.inject({ method: 'GET', url: '/api/visits/upcoming' })
+    expect(res.json()).toEqual({ count: 1 })
+  })
+
+  it('increases by 1 when a future visit is booked and drops back when it is cancelled', async () => {
+    const before = (await app.inject({ method: 'GET', url: '/api/visits/upcoming' })).json() as {
+      count: number
+    }
+
+    const booked = await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: futureBody })
+    expect(booked.statusCode).toBe(201)
+    const visit = booked.json() as Visit
+
+    const after = (await app.inject({ method: 'GET', url: '/api/visits/upcoming' })).json() as {
+      count: number
+    }
+    expect(after.count).toBe(before.count + 1)
+
+    const cancelled = await app.inject({
+      method: 'POST',
+      url: `/api/visits/${visit.id}/cancel`,
+      payload: { cancellationCode: visit.cancellationCode },
+    })
+    expect(cancelled.statusCode).toBe(200)
+
+    const restored = (await app.inject({ method: 'GET', url: '/api/visits/upcoming' })).json() as {
+      count: number
+    }
+    expect(restored.count).toBe(before.count)
+  })
+
+  it('counts across all pets, not just one', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: futureBody })
+    await app.inject({ method: 'POST', url: '/api/pets/2/visits', payload: futureBody })
+
+    // Seeded future visit (1) + two new future visits on different pets.
+    const res = await app.inject({ method: 'GET', url: '/api/visits/upcoming' })
+    expect(res.json()).toEqual({ count: 3 })
+  })
+
+  it('does not count past visits', async () => {
+    // Insert a booked visit dated in the past directly at the DB layer.
+    db.prepare(
+      `INSERT INTO visits (pet_id, visitor_name, visitor_email, starts_at, cancellation_code)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(1, 'Past Visitor', 'past@example.com', '2000-01-01T10:00:00.000Z', 'past-code')
+
+    // Only the seeded future visit qualifies; the past one is excluded.
+    const res = await app.inject({ method: 'GET', url: '/api/visits/upcoming' })
+    expect(res.json()).toEqual({ count: 1 })
+  })
+})
