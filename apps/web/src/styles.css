@@ -118,9 +118,14 @@ h1 {
 }
 
 .adopted-badge {
-  font-size: 0.8rem;
-  color: #4cb782;
+  font-size: 0.75rem;
+  color: #fff;
+  background: #4cb782;
   font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .on-hold-badge {

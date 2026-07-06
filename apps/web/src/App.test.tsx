@@ -7,7 +7,14 @@ import {
   waitForElementToBeRemoved,
   within,
 } from '@testing-library/react'
-import { App, formatAdoptedAt, formatVisitTime, type Pet, type Stats } from './App.js'
+import {
+  App,
+  formatAdoptedAt,
+  formatVisitTime,
+  sortAvailableFirst,
+  type Pet,
+  type Stats,
+} from './App.js'
 
 const PETS: Pet[] = [
   { id: 1, name: 'Biscuit', species: 'dog', priceCents: 89900, status: 'available' },
@@ -49,7 +56,44 @@ describe('App', () => {
     render(<App />)
     await screen.findByText('Biscuit')
     expect(screen.getAllByRole('button', { name: 'Adopt' }).length).toBe(1)
-    expect(screen.getByText('adopted')).toBeDefined()
+    expect(screen.getByText('Adopted')).toBeDefined()
+  })
+
+  it('shows an "Adopted" badge only on adopted pets, and it appears after adopting without a reload', async () => {
+    const pets: Pet[] = [
+      { id: 1, name: 'Biscuit', species: 'dog', priceCents: 89900, status: 'available' },
+      { id: 2, name: 'Mochi', species: 'cat', priceCents: 64900, status: 'adopted' },
+    ]
+    let biscuitAdopted = false
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/pets/1/adopt')) {
+        biscuitAdopted = true
+        return new Response(null, { status: 200 })
+      }
+      const current = pets.map((pet) =>
+        biscuitAdopted && pet.id === 1 ? { ...pet, status: 'adopted' as const } : pet,
+      )
+      if (url.endsWith('/api/stats')) return json(statsFor(current))
+      return json(current)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const biscuitRow = screen.getByText('Biscuit').closest('li') as HTMLElement
+    const mochiRow = screen.getByText('Mochi').closest('li') as HTMLElement
+
+    // The adopted pet carries the badge; the available pet has none.
+    expect(within(mochiRow).getByText('Adopted')).toBeDefined()
+    expect(within(biscuitRow).queryByText('Adopted')).toBeNull()
+
+    // Adopting from the UI makes the badge appear without a full page reload.
+    fireEvent.click(within(biscuitRow).getByRole('button', { name: 'Adopt' }))
+
+    const adoptedRow = (await screen.findByText('Biscuit')).closest('li') as HTMLElement
+    expect(await within(adoptedRow).findByText('Adopted')).toBeDefined()
   })
 
   it('filters the pet list by species and resets on "all"', async () => {
@@ -706,6 +750,79 @@ describe('App', () => {
     const init = cancelCall?.[1] as RequestInit | undefined
     expect(init?.method).toBe('POST')
     expect(JSON.parse(init?.body as string)).toEqual({ cancellationCode: 'secret-code' })
+  })
+
+  it('sorts available pets before adopted ones, preserving order within each group', () => {
+    const pets: Pet[] = [
+      { id: 1, name: 'Alpha', species: 'dog', priceCents: 100, status: 'adopted' },
+      { id: 2, name: 'Bravo', species: 'dog', priceCents: 100, status: 'available' },
+      { id: 3, name: 'Charlie', species: 'dog', priceCents: 100, status: 'adopted' },
+      { id: 4, name: 'Delta', species: 'dog', priceCents: 100, status: 'available' },
+    ]
+    expect(sortAvailableFirst(pets).map((pet) => pet.name)).toEqual([
+      'Bravo',
+      'Delta',
+      'Alpha',
+      'Charlie',
+    ])
+  })
+
+  it('renders available pets above adopted ones in the list', async () => {
+    const pets: Pet[] = [
+      { id: 1, name: 'Adopted-First', species: 'dog', priceCents: 100, status: 'adopted' },
+      { id: 2, name: 'Available-Second', species: 'dog', priceCents: 100, status: 'available' },
+    ]
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/stats')) return json(statsFor(pets))
+      return json(pets)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Available-Second')
+
+    const names = document.querySelectorAll('ul.pets li.pet .name')
+    expect(Array.from(names).map((el) => el.textContent)).toEqual([
+      'Available-Second',
+      'Adopted-First',
+    ])
+  })
+
+  it('moves a pet below the remaining available pets when adopted without a reload', async () => {
+    const pets: Pet[] = [
+      { id: 1, name: 'Biscuit', species: 'dog', priceCents: 89900, status: 'available' },
+      { id: 2, name: 'Mochi', species: 'cat', priceCents: 64900, status: 'available' },
+    ]
+    let biscuitAdopted = false
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/pets/1/adopt')) {
+        biscuitAdopted = true
+        return new Response(null, { status: 200 })
+      }
+      const current = pets.map((pet) =>
+        biscuitAdopted && pet.id === 1 ? { ...pet, status: 'adopted' as const } : pet,
+      )
+      if (url.endsWith('/api/stats')) return json(statsFor(current))
+      return json(current)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const namesNow = () =>
+      Array.from(document.querySelectorAll('ul.pets li.pet .name')).map((el) => el.textContent)
+    // Initially both available: original order preserved (Biscuit then Mochi).
+    expect(namesNow()).toEqual(['Biscuit', 'Mochi'])
+
+    const biscuitRow = screen.getByText('Biscuit').closest('li') as HTMLElement
+    fireEvent.click(within(biscuitRow).getByRole('button', { name: 'Adopt' }))
+
+    // After adoption, the still-available Mochi rises above the now-adopted Biscuit.
+    await screen.findByText('Adopted')
+    expect(namesNow()).toEqual(['Mochi', 'Biscuit'])
   })
 
   it('surfaces the API error when the cancellation code is rejected', async () => {
