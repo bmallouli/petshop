@@ -766,7 +766,7 @@ describe('App', () => {
     fireEvent.click(within(biscuitRow).getByRole('button', { name: 'Adopt' }))
 
     // After adoption, the still-available Mochi rises above the now-adopted Biscuit.
-    await screen.findByText('adopted')
+    await screen.findByText('Adopted')
     expect(namesNow()).toEqual(['Mochi', 'Biscuit'])
   })
 
