@@ -8,6 +8,15 @@ export interface Pet {
   species: string
   priceCents: number
   status: 'available' | 'adopted' | 'on_hold'
+  ownerId: number | null
+  createdAt: string
+}
+
+export interface Owner {
+  id: number
+  name: string
+  email: string
+  accessCode: string
   createdAt: string
 }
 
@@ -33,6 +42,29 @@ const SEED_PETS: [string, string, number][] = [
   ['Sprout', 'rabbit', 8900],
 ]
 
+/**
+ * Demo portal owners. Each owner's `accessCode` is deterministic and documented
+ * here so later portal tickets (and manual testing) can log in as a seed owner.
+ * The `pets` array holds 1-based indices into SEED_PETS that this owner owns.
+ */
+const SEED_OWNERS: { name: string; email: string; accessCode: string; pets: number[] }[] = [
+  { name: 'Ada Lovelace', email: 'ada@example.com', accessCode: 'OWNER-ADA-0001', pets: [1, 3] },
+  { name: 'Grace Hopper', email: 'grace@example.com', accessCode: 'OWNER-GRACE-0002', pets: [2, 5] },
+]
+
+/**
+ * A deterministic future `booked` visit for one owned pet (Grace owns pet 5),
+ * so the portal has an upcoming visit to display after seeding. The date is
+ * well in the future to stay "upcoming" for the life of the demo.
+ */
+const SEED_VISIT = {
+  petIndex: 5,
+  visitorName: 'Grace Hopper',
+  visitorEmail: 'grace@example.com',
+  startsAt: '2030-01-15T10:00:00.000Z',
+  cancellationCode: 'SEED-VISIT-0001',
+}
+
 /** Open (and migrate) the pets database. Pass ':memory:' in tests. */
 export function openDb(path: string): Database.Database {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
@@ -49,6 +81,15 @@ export function openDb(path: string): Database.Database {
     )
   `)
   db.exec(`
+    CREATE TABLE IF NOT EXISTS owners (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL,
+      email       TEXT NOT NULL,
+      access_code TEXT NOT NULL UNIQUE,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
+  db.exec(`
     CREATE TABLE IF NOT EXISTS visits (
       id                INTEGER PRIMARY KEY AUTOINCREMENT,
       pet_id            INTEGER NOT NULL REFERENCES pets(id),
@@ -60,15 +101,48 @@ export function openDb(path: string): Database.Database {
       created_at        TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `)
+  // The pets table is created with IF NOT EXISTS, so an already-seeded database
+  // won't get owner_id from the CREATE above. Add it via ALTER only when missing
+  // so existing data migrates in place without being dropped.
+  const petColumns = db.prepare('PRAGMA table_info(pets)').all() as { name: string }[]
+  if (!petColumns.some((col) => col.name === 'owner_id')) {
+    db.exec('ALTER TABLE pets ADD COLUMN owner_id INTEGER REFERENCES owners(id)')
+  }
   return db
 }
 
-/** Insert the demo pets if the table is empty. */
+/** Insert the demo pets, owners, and a future visit if the store is empty. */
 export function seed(db: Database.Database): void {
   const { n } = db.prepare('SELECT count(*) AS n FROM pets').get() as { n: number }
   if (n > 0) return
-  const insert = db.prepare('INSERT INTO pets (name, species, price_cents) VALUES (?, ?, ?)')
-  for (const pet of SEED_PETS) insert.run(...pet)
+
+  const insertPet = db.prepare('INSERT INTO pets (name, species, price_cents) VALUES (?, ?, ?)')
+  const petIds: number[] = []
+  for (const pet of SEED_PETS) petIds.push(Number(insertPet.run(...pet).lastInsertRowid))
+
+  const insertOwner = db.prepare('INSERT INTO owners (name, email, access_code) VALUES (?, ?, ?)')
+  const linkPet = db.prepare('UPDATE pets SET owner_id = ? WHERE id = ?')
+  for (const owner of SEED_OWNERS) {
+    const ownerId = Number(insertOwner.run(owner.name, owner.email, owner.accessCode).lastInsertRowid)
+    for (const petIndex of owner.pets) {
+      const petId = petIds[petIndex - 1]
+      if (petId !== undefined) linkPet.run(ownerId, petId)
+    }
+  }
+
+  const visitPetId = petIds[SEED_VISIT.petIndex - 1]
+  if (visitPetId !== undefined) {
+    db.prepare(
+      `INSERT INTO visits (pet_id, visitor_name, visitor_email, starts_at, cancellation_code)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(
+      visitPetId,
+      SEED_VISIT.visitorName,
+      SEED_VISIT.visitorEmail,
+      SEED_VISIT.startsAt,
+      SEED_VISIT.cancellationCode,
+    )
+  }
 }
 
 interface PetRow {
@@ -77,6 +151,7 @@ interface PetRow {
   species: string
   price_cents: number
   status: 'available' | 'adopted' | 'on_hold'
+  owner_id: number | null
   created_at: string
 }
 
@@ -87,6 +162,25 @@ export function toPet(row: PetRow): Pet {
     species: row.species,
     priceCents: row.price_cents,
     status: row.status,
+    ownerId: row.owner_id ?? null,
+    createdAt: row.created_at,
+  }
+}
+
+interface OwnerRow {
+  id: number
+  name: string
+  email: string
+  access_code: string
+  created_at: string
+}
+
+export function toOwner(row: OwnerRow): Owner {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    accessCode: row.access_code,
     createdAt: row.created_at,
   }
 }
