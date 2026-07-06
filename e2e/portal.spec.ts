@@ -30,7 +30,7 @@ test('portal route shows the access-code login screen before any code is entered
   await expect(page.locator('.portal-pet')).toHaveCount(0)
 })
 
-test("owner signs in and sees their pets and upcoming visits, read-only", async ({ page }) => {
+test('owner signs in and sees their pets and upcoming visits, read-only', async ({ page }) => {
   await page.goto('/portal')
 
   await page.getByLabel('Access code').fill(OWNER_CODE)
