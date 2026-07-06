@@ -12,6 +12,7 @@ import {
   formatAdoptedAt,
   formatVisitTime,
   sortAvailableFirst,
+  speciesEmoji,
   type Pet,
   type Stats,
 } from './App.js'
@@ -816,6 +817,33 @@ describe('App', () => {
     const init = cancelCall?.[1] as RequestInit | undefined
     expect(init?.method).toBe('POST')
     expect(JSON.parse(init?.body as string)).toEqual({ cancellationCode: 'secret-code' })
+  })
+
+  it('maps each seeded species to its emoji and falls back to 🐾 for anything else', () => {
+    expect(speciesEmoji('dog')).toBe('🐶')
+    expect(speciesEmoji('cat')).toBe('🐱')
+    expect(speciesEmoji('hamster')).toBe('🐹')
+    expect(speciesEmoji('fish')).toBe('🐟')
+    expect(speciesEmoji('parrot')).toBe('🦜')
+    expect(speciesEmoji('rabbit')).toBe('🐰')
+    // Case/whitespace-insensitive lookup.
+    expect(speciesEmoji(' Dog ')).toBe('🐶')
+    // Unknown species get the paw-print fallback.
+    expect(speciesEmoji('dragon')).toBe('🐾')
+    expect(speciesEmoji('')).toBe('🐾')
+  })
+
+  it('renders the species emoji immediately before each pet name in the list', async () => {
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const biscuitRow = screen.getByText('Biscuit').closest('li') as HTMLElement
+    const mochiRow = screen.getByText('Mochi').closest('li') as HTMLElement
+    expect(within(biscuitRow).getByText('🐶')).toBeDefined()
+    expect(within(mochiRow).getByText('🐱')).toBeDefined()
+
+    // The species text stays put — the emoji is an addition, not a replacement.
+    expect(within(biscuitRow).getByText('dog')).toBeDefined()
   })
 
   it('sorts available pets before adopted ones, preserving order within each group', () => {
