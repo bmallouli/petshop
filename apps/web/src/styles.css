@@ -100,6 +100,10 @@ h1 {
   opacity: 0.55;
 }
 
+.pet.on_hold {
+  opacity: 0.7;
+}
+
 .name {
   font-weight: 600;
   flex: 1;
@@ -116,6 +120,12 @@ h1 {
 .adopted-badge {
   font-size: 0.8rem;
   color: #4cb782;
+  font-weight: 600;
+}
+
+.on-hold-badge {
+  font-size: 0.8rem;
+  color: #d89614;
   font-weight: 600;
 }
 
