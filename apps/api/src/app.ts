@@ -97,6 +97,34 @@ export function buildApp(db: Database.Database): FastifyInstance {
     return { owner: { id: owner.id, name: owner.name } }
   })
 
+  app.get('/api/portal/pets', async (req, reply) => {
+    const owner = ownerFromRequest(db, req.headers['x-owner-code'])
+    if (!owner) return reply.code(401).send({ error: 'invalid access code' })
+    const rows = db.prepare('SELECT * FROM pets WHERE owner_id = ? ORDER BY id').all(owner.id)
+    return rows.map((row) => toPet(row as never))
+  })
+
+  app.get('/api/portal/pets/:id/visits', async (req, reply) => {
+    const owner = ownerFromRequest(db, req.headers['x-owner-code'])
+    if (!owner) return reply.code(401).send({ error: 'invalid access code' })
+
+    const id = Number((req.params as { id: string }).id)
+    if (!Number.isInteger(id)) return reply.code(400).send({ error: 'id must be an integer' })
+
+    // Do not leak other owners' pets: an unowned/nonexistent pet and a pet owned
+    // by someone else are indistinguishable — both are a plain 404.
+    const petRow = db.prepare('SELECT * FROM pets WHERE id = ? AND owner_id = ?').get(id, owner.id)
+    if (!petRow) return reply.code(404).send({ error: `pet ${id} not found` })
+
+    const rows = db
+      .prepare(`SELECT * FROM visits WHERE pet_id = ? AND status = 'booked' ORDER BY starts_at ASC`)
+      .all(id)
+    return rows.map((row) => {
+      const { cancellationCode: _cancellationCode, ...visit } = toVisit(row as never)
+      return visit
+    })
+  })
+
   app.get('/api/pets', async (req, reply) => {
     const query = listQuerySchema.safeParse(req.query)
     if (!query.success) return reply.code(400).send({ error: query.error.issues[0]?.message ?? 'bad query' })
