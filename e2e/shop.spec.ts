@@ -15,7 +15,7 @@ test('adopting a pet updates its card', async ({ page }) => {
   // already adopted — both paths must end with the adopted badge visible.
   const adopt = card.getByRole('button', { name: 'Adopt' })
   if (await adopt.isVisible()) await adopt.click()
-  await expect(card.getByText('adopted')).toBeVisible()
+  await expect(card.getByText('Adopted')).toBeVisible()
 })
 
 test('books a visit from an available pet card', async ({ page }) => {
