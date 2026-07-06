@@ -70,10 +70,29 @@ export interface Visit {
   createdAt: string
 }
 
-/** Format an ISO datetime for human-readable display; falls back to the raw string if unparseable. */
+/**
+ * Format an ISO datetime for human-readable display; falls back to the raw
+ * string if unparseable. Visits that fall on the current or next calendar day
+ * (local time) are prefixed with `Today, ` or `Tomorrow, ` respectively.
+ */
 export function formatVisitTime(startsAt: string): string {
   const date = new Date(startsAt)
-  return Number.isNaN(date.getTime()) ? startsAt : date.toLocaleString()
+  if (Number.isNaN(date.getTime())) return startsAt
+
+  const formatted = date.toLocaleString()
+
+  const now = new Date()
+  const dayDiff = calendarDayDiff(now, date)
+  if (dayDiff === 0) return `Today, ${formatted}`
+  if (dayDiff === 1) return `Tomorrow, ${formatted}`
+  return formatted
+}
+
+/** Whole calendar days (local time) from `from` to `to`, ignoring the time of day. */
+function calendarDayDiff(from: Date, to: Date): number {
+  const fromMidnight = new Date(from.getFullYear(), from.getMonth(), from.getDate())
+  const toMidnight = new Date(to.getFullYear(), to.getMonth(), to.getDate())
+  return Math.round((toMidnight.getTime() - fromMidnight.getTime()) / 86_400_000)
 }
 
 /**
