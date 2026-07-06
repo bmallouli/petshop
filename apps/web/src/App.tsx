@@ -6,6 +6,7 @@ export interface Pet {
   species: string
   priceCents: number
   status: 'available' | 'adopted' | 'on_hold'
+  adoptedAt?: string | null
 }
 
 export interface Visit {
@@ -38,6 +39,17 @@ export interface Visit {
 export function formatVisitTime(startsAt: string): string {
   const date = new Date(startsAt)
   return Number.isNaN(date.getTime()) ? startsAt : date.toLocaleString()
+}
+
+/**
+ * Human-readable adoption date. The API stores `adopted_at` as SQLite's
+ * `YYYY-MM-DD HH:MM:SS` (UTC); we show the date part, falling back to the raw
+ * value if it cannot be parsed and an empty string when there is no date.
+ */
+export function formatAdoptedAt(adoptedAt: string | null | undefined): string {
+  if (!adoptedAt) return ''
+  const date = new Date(adoptedAt.replace(' ', 'T') + 'Z')
+  return Number.isNaN(date.getTime()) ? adoptedAt : date.toLocaleDateString()
 }
 
 type VisitsState =
@@ -254,6 +266,8 @@ export function App() {
   const [visits, setVisits] = useState<Record<number, VisitsState | undefined>>({})
   const [showOnHold, setShowOnHold] = useState(false)
   const [onHoldPets, setOnHoldPets] = useState<Pet[] | null>(null)
+  const [showAdopted, setShowAdopted] = useState(false)
+  const [adoptedPets, setAdoptedPets] = useState<Pet[] | null>(null)
 
   const [addName, setAddName] = useState('')
   const [addSpecies, setAddSpecies] = useState('')
@@ -291,9 +305,15 @@ export function App() {
     if (res.ok) setOnHoldPets((await res.json()) as Pet[])
   }, [])
 
+  const loadAdopted = useCallback(async () => {
+    const res = await fetch('/api/pets/adopted-recently')
+    if (res.ok) setAdoptedPets((await res.json()) as Pet[])
+  }, [])
+
   async function adopt(id: number) {
     await fetch(`/api/pets/${id}/adopt`, { method: 'POST' })
     await load()
+    if (showAdopted) await loadAdopted()
   }
 
   async function hold(id: number) {
@@ -315,6 +335,16 @@ export function App() {
     } else {
       setShowOnHold(true)
       await loadOnHold()
+    }
+  }
+
+  async function toggleAdopted() {
+    if (showAdopted) {
+      setShowAdopted(false)
+      setAdoptedPets(null)
+    } else {
+      setShowAdopted(true)
+      await loadAdopted()
     }
   }
 
@@ -490,6 +520,29 @@ export function App() {
                   visitsState={visits[pet.id]}
                   onToggleVisits={() => toggleVisits(pet.id)}
                 />
+              ))}
+            </ul>
+          ))}
+      </section>
+      <section className="adopted-recently">
+        <button className="show-adopted" onClick={() => void toggleAdopted()}>
+          {showAdopted ? 'Hide recently adopted' : 'Show adopted this month'}
+        </button>
+        {showAdopted &&
+          adoptedPets &&
+          (adoptedPets.length === 0 ? (
+            <p className="no-adopted">No pets have been adopted in the last month.</p>
+          ) : (
+            <ul className="pets adopted-list">
+              {adoptedPets.map((pet) => (
+                <li key={pet.id} className="pet adopted">
+                  <span className="name">{pet.name}</span>
+                  <span className="species">{pet.species}</span>
+                  <span className="price">{formatPrice(pet.priceCents)}</span>
+                  {pet.adoptedAt && (
+                    <span className="adopted-at">adopted {formatAdoptedAt(pet.adoptedAt)}</span>
+                  )}
+                </li>
               ))}
             </ul>
           ))}

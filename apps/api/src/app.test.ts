@@ -468,6 +468,50 @@ describe('POST /api/pets/:id/adopt', () => {
   })
 })
 
+describe('GET /api/pets/adopted-recently', () => {
+  it('records adoptedAt when a pet is adopted', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/pets/3/adopt' })
+    expect(res.statusCode).toBe(200)
+    const pet = res.json() as Pet
+    expect(pet.adoptedAt).toBeTruthy()
+    // Freshly adopted, so it sits within the last month.
+    const recent = await app.inject({ method: 'GET', url: '/api/pets/adopted-recently' })
+    expect((recent.json() as Pet[]).map((p) => p.id)).toContain(3)
+  })
+
+  it('returns an empty array when nothing has been adopted', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/pets/adopted-recently' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual([])
+  })
+
+  it('lists only pets adopted within the last month, most recent first', async () => {
+    await app.inject({ method: 'POST', url: '/api/pets/1/adopt' })
+    await app.inject({ method: 'POST', url: '/api/pets/2/adopt' })
+
+    // Backdate pet 1 to just under a month ago (recent) and pet 2 to two months ago (excluded).
+    db.prepare(`UPDATE pets SET adopted_at = datetime('now', '-29 days') WHERE id = ?`).run(1)
+    db.prepare(`UPDATE pets SET adopted_at = datetime('now', '-2 months') WHERE id = ?`).run(2)
+
+    // Pet 5 adopted now — the most recent of the qualifying pets.
+    await app.inject({ method: 'POST', url: '/api/pets/5/adopt' })
+
+    const res = await app.inject({ method: 'GET', url: '/api/pets/adopted-recently' })
+    expect(res.statusCode).toBe(200)
+    const pets = res.json() as Pet[]
+    expect(pets.map((p) => p.id)).toEqual([5, 1])
+    expect(pets.every((p) => p.status === 'adopted')).toBe(true)
+  })
+
+  it('omits adopted pets that have no recorded adoptedAt (legacy rows)', async () => {
+    // Simulate a pet adopted before adopted_at was tracked: status adopted, adopted_at NULL.
+    db.prepare(`UPDATE pets SET status = 'adopted', adopted_at = NULL WHERE id = ?`).run(4)
+
+    const res = await app.inject({ method: 'GET', url: '/api/pets/adopted-recently' })
+    expect((res.json() as Pet[]).map((p) => p.id)).not.toContain(4)
+  })
+})
+
 describe('POST /api/pets/:id/hold', () => {
   it('marks an available pet on hold', async () => {
     const res = await app.inject({ method: 'POST', url: '/api/pets/1/hold' })
