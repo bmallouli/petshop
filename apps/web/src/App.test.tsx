@@ -140,6 +140,32 @@ describe('App', () => {
     expect(screen.queryByText('Biscuit')).toBeNull()
   })
 
+  it('shows the number of listed pets in the heading and keeps it in sync with the list', async () => {
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    // Both seeded pets are rendered, so the heading counts 2.
+    const heading = screen.getByRole('heading', { name: 'Pets (2)' })
+    expect(heading).toBeDefined()
+    expect(screen.getAllByRole('listitem').filter((li) => li.className.startsWith('pet ')).length).toBe(2)
+
+    // Filtering to one species leaves a single card and the heading follows.
+    const select = screen.getByRole('combobox', { name: 'Species' })
+    fireEvent.change(select, { target: { value: 'dog' } })
+    expect(screen.getByRole('heading', { name: 'Pets (1)' })).toBeDefined()
+  })
+
+  it('shows (0) in the heading when no pets match the list', async () => {
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const select = screen.getByRole('combobox', { name: 'Species' })
+    fireEvent.change(select, { target: { value: 'fish' } })
+
+    // No seeded pet is a fish, so the list is empty and the heading shows (0).
+    expect(screen.getByRole('heading', { name: 'Pets (0)' })).toBeDefined()
+  })
+
   it('shows the available count in the header from /api/stats', async () => {
     render(<App />)
     await screen.findByText('Biscuit')
