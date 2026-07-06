@@ -5,6 +5,26 @@ import { Portal } from './Portal.js'
 const VALID_CODE = 'OWNER-ADA-0001'
 const OWNER = { id: 1, name: 'Ada Lovelace' }
 
+const visit = (id: number, petId: number, startsAt: string) => ({
+  id,
+  petId,
+  visitorName: 'Ada Lovelace',
+  visitorEmail: 'ada@example.com',
+  startsAt,
+  status: 'booked' as const,
+  createdAt: '2026-01-01T00:00:00.000Z',
+})
+
+const DEFAULT_PETS = [
+  { id: 1, name: 'Biscuit', species: 'dog', priceCents: 89900, status: 'available' as const },
+  { id: 3, name: 'Nibbles', species: 'hamster', priceCents: 2400, status: 'adopted' as const },
+]
+
+const DEFAULT_VISITS: Record<number, ReturnType<typeof visit>[]> = {
+  1: [visit(10, 1, '2030-01-15T10:00:00.000Z')],
+  3: [],
+}
+
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } })
 
@@ -14,14 +34,26 @@ const unauthorized = () =>
     headers: { 'content-type': 'application/json' },
   })
 
-/** A fetch mock for /api/portal/me that authenticates only VALID_CODE. */
-function portalFetch() {
+/**
+ * A fetch mock for the owner portal. Authenticates only VALID_CODE and serves
+ * owner-scoped pets and per-pet visits. Callers can override the pets/visits
+ * fixtures to exercise the empty states.
+ */
+function portalFetch(
+  opts: { pets?: typeof DEFAULT_PETS; visits?: Record<number, ReturnType<typeof visit>[]> } = {},
+) {
+  const pets = opts.pets ?? DEFAULT_PETS
+  const visits = opts.visits ?? DEFAULT_VISITS
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
+    const authed = new Headers(init?.headers).get('x-owner-code') === VALID_CODE
     if (url.endsWith('/api/portal/me')) {
-      const headers = new Headers(init?.headers)
-      return headers.get('x-owner-code') === VALID_CODE ? json({ owner: OWNER }) : unauthorized()
+      return authed ? json({ owner: OWNER }) : unauthorized()
     }
+    if (!authed) return unauthorized()
+    if (url.endsWith('/api/portal/pets')) return json(pets)
+    const match = url.match(/\/api\/portal\/pets\/(\d+)\/visits$/)
+    if (match) return json(visits[Number(match[1])] ?? [])
     throw new Error(`unexpected fetch: ${url}`)
   })
 }
@@ -101,5 +133,49 @@ describe('Portal', () => {
 
     expect(await screen.findByLabelText('Access code')).toBeDefined()
     expect(localStorage.getItem('petshop.ownerCode')).toBeNull()
+  })
+
+  it("lists the owner's pets with name, species and price once signed in", async () => {
+    localStorage.setItem('petshop.ownerCode', VALID_CODE)
+    vi.stubGlobal('fetch', portalFetch())
+    render(<Portal />)
+
+    expect(await screen.findByText('Biscuit')).toBeDefined()
+    expect(screen.getByText('dog')).toBeDefined()
+    expect(screen.getByText('$899.00')).toBeDefined()
+    expect(screen.getByText('Nibbles')).toBeDefined()
+    expect(screen.getByText('$24.00')).toBeDefined()
+  })
+
+  it('shows a pet upcoming visit time and an empty state for a pet with none', async () => {
+    localStorage.setItem('petshop.ownerCode', VALID_CODE)
+    vi.stubGlobal('fetch', portalFetch())
+    render(<Portal />)
+
+    // Biscuit (id 1) has a booked visit; its start time renders via formatVisitTime.
+    const expected = new Date('2030-01-15T10:00:00.000Z').toLocaleString()
+    expect(await screen.findByText(expected)).toBeDefined()
+    // Nibbles (id 3) has no visits and shows the empty-state message.
+    expect(await screen.findByText('No upcoming visits')).toBeDefined()
+  })
+
+  it('renders no adopt, hold, book or cancel controls anywhere', async () => {
+    localStorage.setItem('petshop.ownerCode', VALID_CODE)
+    vi.stubGlobal('fetch', portalFetch())
+    render(<Portal />)
+
+    await screen.findByText('Biscuit')
+    expect(screen.queryByRole('button', { name: /adopt/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /hold/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /book/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /cancel/i })).toBeNull()
+  })
+
+  it('shows an empty state when the owner has no pets', async () => {
+    localStorage.setItem('petshop.ownerCode', VALID_CODE)
+    vi.stubGlobal('fetch', portalFetch({ pets: [], visits: {} }))
+    render(<Portal />)
+
+    expect(await screen.findByText("You don't have any pets yet.")).toBeDefined()
   })
 })
