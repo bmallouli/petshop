@@ -146,10 +146,59 @@ button:hover {
   color: #eb5757;
 }
 
+.add-pet,
 .cancel-visit {
   margin-top: 2rem;
   padding-top: 1.5rem;
   border-top: 1px solid #e5e5e0;
+}
+
+.add-pet h2 {
+  font-size: 1.2rem;
+}
+
+.add-pet .hint {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.add-pet form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.add-pet label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.add-pet input {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #d5d5d0;
+  border-radius: 6px;
+}
+
+.add-pet button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.add-pet input.invalid,
+.add-pet input[aria-invalid='true'] {
+  border-color: #eb5757;
+  outline-color: #eb5757;
+}
+
+.field-error {
+  font-size: 0.8rem;
+}
+
+.add-pet-error {
+  margin: 0.5rem 0 0;
 }
 
 .cancel-visit h2 {
