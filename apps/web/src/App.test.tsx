@@ -317,6 +317,43 @@ describe('App', () => {
     expect(within(biscuitRow).queryByText(/Save your cancellation code/)).toBeNull()
   })
 
+  it('surfaces the cap-exceeded error (including the cap value) from the booking form', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/api/pets/1/visits')) {
+        return new Response(
+          JSON.stringify({ error: 'pet 1 already has the maximum of 3 upcoming visits' }),
+          { status: 409, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/stats')) return json(statsFor(PETS))
+      return json(PETS)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const biscuitRow = screen.getByText('Biscuit').closest('li') as HTMLElement
+    fireEvent.click(within(biscuitRow).getByRole('button', { name: 'Book visit' }))
+
+    fireEvent.change(within(biscuitRow).getByLabelText('Your name'), {
+      target: { value: 'Grace Hopper' },
+    })
+    fireEvent.change(within(biscuitRow).getByLabelText('Email'), {
+      target: { value: 'grace@example.com' },
+    })
+    fireEvent.change(within(biscuitRow).getByLabelText('Slot'), {
+      target: { value: '2026-08-01T15:30' },
+    })
+    fireEvent.click(within(biscuitRow).getByRole('button', { name: 'Book' }))
+
+    expect(
+      await within(biscuitRow).findByText('pet 1 already has the maximum of 3 upcoming visits'),
+    ).toBeDefined()
+    expect(within(biscuitRow).queryByText(/Save your cancellation code/)).toBeNull()
+  })
+
   it('cancels a visit by code and refreshes the affected pet’s upcoming visits', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input)

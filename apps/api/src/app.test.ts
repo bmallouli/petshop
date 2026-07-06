@@ -344,6 +344,113 @@ describe('POST /api/pets/:id/visits', () => {
     expect((first.json() as Visit).cancellationCode).not.toBe((second.json() as Visit).cancellationCode)
   })
 
+  // Directly insert a booked visit, bypassing the API cap, to simulate pre-existing state.
+  function insertBookedVisit(petId: number, startsAt: string): void {
+    db.prepare(
+      `INSERT INTO visits (pet_id, visitor_name, visitor_email, starts_at, cancellation_code)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(petId, 'Seed Visitor', 'seed@example.com', startsAt, `code-${petId}-${startsAt}`)
+  }
+
+  it('allows booking while the pet is below the upcoming-visit cap', async () => {
+    // Pet already has 2 upcoming visits (cap is 3); a third distinct slot still succeeds.
+    insertBookedVisit(1, '2026-08-01T09:00:00.000Z')
+    insertBookedVisit(1, '2026-08-01T10:00:00.000Z')
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/pets/1/visits',
+      payload: { ...validBody, startsAt: '2026-08-01T11:00:00.000Z' },
+    })
+    expect(res.statusCode).toBe(201)
+  })
+
+  it('rejects booking once the pet is at the upcoming-visit cap, naming the cap', async () => {
+    insertBookedVisit(1, '2026-08-01T09:00:00.000Z')
+    insertBookedVisit(1, '2026-08-01T10:00:00.000Z')
+    insertBookedVisit(1, '2026-08-01T11:00:00.000Z')
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/pets/1/visits',
+      payload: { ...validBody, startsAt: '2026-08-01T12:00:00.000Z' },
+    })
+    expect(res.statusCode).toBe(409)
+    expect(res.json()).toEqual({ error: 'pet 1 already has the maximum of 3 upcoming visits' })
+  })
+
+  it('does not count cancelled visits toward the cap', async () => {
+    insertBookedVisit(1, '2026-08-01T09:00:00.000Z')
+    insertBookedVisit(1, '2026-08-01T10:00:00.000Z')
+    const third = db
+      .prepare(
+        `INSERT INTO visits (pet_id, visitor_name, visitor_email, starts_at, cancellation_code)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(1, 'Seed', 'seed@example.com', '2026-08-01T11:00:00.000Z', 'code-cancelled')
+    db.prepare(`UPDATE visits SET status = 'cancelled' WHERE id = ?`).run(third.lastInsertRowid)
+
+    // Only 2 booked visits remain, so a new booking is still under the cap.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/pets/1/visits',
+      payload: { ...validBody, startsAt: '2026-08-01T12:00:00.000Z' },
+    })
+    expect(res.statusCode).toBe(201)
+  })
+
+  it('grandfathers pets already over the cap: existing visits stay, new bookings are blocked', async () => {
+    // Ship day: this pet already has 4 upcoming visits, above the cap of 3.
+    insertBookedVisit(1, '2026-08-01T09:00:00.000Z')
+    insertBookedVisit(1, '2026-08-01T10:00:00.000Z')
+    insertBookedVisit(1, '2026-08-01T11:00:00.000Z')
+    insertBookedVisit(1, '2026-08-01T12:00:00.000Z')
+
+    // Existing visits are untouched — nothing is trimmed.
+    const before = await app.inject({ method: 'GET', url: '/api/pets/1/visits' })
+    expect((before.json() as Visit[]).length).toBe(4)
+
+    // New bookings are rejected while the pet is over the cap.
+    const blocked = await app.inject({
+      method: 'POST',
+      url: '/api/pets/1/visits',
+      payload: { ...validBody, startsAt: '2026-08-01T13:00:00.000Z' },
+    })
+    expect(blocked.statusCode).toBe(409)
+    expect(blocked.json()).toEqual({ error: 'pet 1 already has the maximum of 3 upcoming visits' })
+
+    // The existing visits are still all present after the rejected booking.
+    const after = await app.inject({ method: 'GET', url: '/api/pets/1/visits' })
+    expect((after.json() as Visit[]).length).toBe(4)
+  })
+
+  it('lets an over-cap pet book again once cancellations drop it below the cap', async () => {
+    insertBookedVisit(1, '2026-08-01T09:00:00.000Z')
+    insertBookedVisit(1, '2026-08-01T10:00:00.000Z')
+    insertBookedVisit(1, '2026-08-01T11:00:00.000Z')
+
+    // At the cap: still blocked.
+    const blocked = await app.inject({
+      method: 'POST',
+      url: '/api/pets/1/visits',
+      payload: { ...validBody, startsAt: '2026-08-01T12:00:00.000Z' },
+    })
+    expect(blocked.statusCode).toBe(409)
+
+    // Cancel one visit, dropping to 2 upcoming visits.
+    const oldest = db
+      .prepare(`SELECT id FROM visits WHERE pet_id = 1 ORDER BY starts_at ASC LIMIT 1`)
+      .get() as { id: number }
+    db.prepare(`UPDATE visits SET status = 'cancelled' WHERE id = ?`).run(oldest.id)
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/pets/1/visits',
+      payload: { ...validBody, startsAt: '2026-08-01T12:00:00.000Z' },
+    })
+    expect(res.statusCode).toBe(201)
+  })
+
   it('lets a slot freed by a cancelled visit be rebooked', async () => {
     const first = await app.inject({ method: 'POST', url: '/api/pets/1/visits', payload: validBody })
     expect(first.statusCode).toBe(201)
