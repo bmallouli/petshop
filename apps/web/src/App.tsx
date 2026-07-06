@@ -169,7 +169,7 @@ function PetCard({
       <span className="name">{pet.name}</span>
       <span className="species">{pet.species}</span>
       <span className="price">{formatPrice(pet.priceCents)}</span>
-      {pet.status === 'adopted' && <span className="adopted-badge">adopted</span>}
+      {pet.status === 'adopted' && <span className="adopted-badge">Adopted</span>}
       {pet.status === 'on_hold' && (
         <>
           <span className="on-hold-badge">on hold</span>
