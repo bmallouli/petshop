@@ -26,7 +26,7 @@ test('portal route shows the access-code login screen before any code is entered
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
 
   // No owner data is shown before a code is submitted.
-  await expect(page.getByText(/Signed in as/)).toHaveCount(0)
+  await expect(page.getByText(/Welcome back/)).toHaveCount(0)
   await expect(page.locator('.portal-pet')).toHaveCount(0)
 })
 
@@ -36,7 +36,9 @@ test('owner signs in and sees their pets and upcoming visits, read-only', async 
   await page.getByLabel('Access code').fill(OWNER_CODE)
   await page.getByRole('button', { name: 'Sign in' }).click()
 
-  await expect(page.getByText(`Signed in as ${OWNER_NAME}`)).toBeVisible()
+  // The signed-in view greets the owner by name and shows their pet count.
+  await expect(page.getByText(`Welcome back, ${OWNER_NAME}`)).toBeVisible()
+  await expect(page.locator('.portal-pet-count')).toHaveText('2 pets')
 
   // Pepper is listed and shows its seeded upcoming visit.
   const withVisit = page.locator('.portal-pet', { hasText: PET_WITH_VISIT })
@@ -68,7 +70,7 @@ test('an unknown access code shows an error and reveals no owner data', async ({
   await expect(page.getByLabel('Access code')).toBeVisible()
 
   // No owner's pets or visits are revealed.
-  await expect(page.getByText(/Signed in as/)).toHaveCount(0)
+  await expect(page.getByText(/Welcome back/)).toHaveCount(0)
   await expect(page.locator('.portal-pet')).toHaveCount(0)
   await expect(page.getByText(PET_WITH_VISIT)).toHaveCount(0)
   await expect(page.getByText(PET_WITHOUT_VISIT)).toHaveCount(0)
