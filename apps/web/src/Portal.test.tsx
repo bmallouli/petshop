@@ -101,7 +101,7 @@ describe('Portal', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
-    expect(await screen.findByText('Signed in as Ada Lovelace')).toBeDefined()
+    expect(await screen.findByText('Welcome back, Ada Lovelace')).toBeDefined()
     expect(localStorage.getItem('petshop.ownerCode')).toBe(VALID_CODE)
     expect(screen.queryByLabelText('Access code')).toBeNull()
   })
@@ -111,7 +111,7 @@ describe('Portal', () => {
     vi.stubGlobal('fetch', portalFetch())
     render(<Portal />)
 
-    expect(await screen.findByText('Signed in as Ada Lovelace')).toBeDefined()
+    expect(await screen.findByText('Welcome back, Ada Lovelace')).toBeDefined()
     expect(screen.queryByLabelText('Access code')).toBeNull()
   })
 
@@ -177,6 +177,38 @@ describe('Portal', () => {
     render(<Portal />)
 
     expect(await screen.findByText("You don't have any pets yet.")).toBeDefined()
+  })
+
+  it("greets the owner and shows their pet count once signed in", async () => {
+    localStorage.setItem('petshop.ownerCode', VALID_CODE)
+    vi.stubGlobal('fetch', portalFetch())
+    render(<Portal />)
+
+    expect(await screen.findByText('Welcome back, Ada Lovelace')).toBeDefined()
+    // Two pets in the default fixture, pluralized.
+    expect(await screen.findByText('2 pets')).toBeDefined()
+  })
+
+  it('shows a singular pet count for an owner with one pet', async () => {
+    localStorage.setItem('petshop.ownerCode', VALID_CODE)
+    vi.stubGlobal(
+      'fetch',
+      portalFetch({
+        pets: [DEFAULT_PETS[0]],
+        visits: { 1: [] },
+      }),
+    )
+    render(<Portal />)
+
+    expect(await screen.findByText('1 pet')).toBeDefined()
+  })
+
+  it('shows a zero pet count for an owner with no pets', async () => {
+    localStorage.setItem('petshop.ownerCode', VALID_CODE)
+    vi.stubGlobal('fetch', portalFetch({ pets: [], visits: {} }))
+    render(<Portal />)
+
+    expect(await screen.findByText('0 pets')).toBeDefined()
   })
 
   it('shows a footer with the demo notice on the login page', async () => {
