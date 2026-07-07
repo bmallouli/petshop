@@ -54,6 +54,15 @@ describe('App', () => {
     expect(screen.getByText('Mochi')).toBeDefined()
   })
 
+  it('shows the tagline directly under the main heading', async () => {
+    render(<App />)
+    const heading = await screen.findByRole('heading', { level: 1, name: /Petshop/ })
+    const tagline = screen.getByText('Find your new best friend')
+    expect(tagline).toBeDefined()
+    // The tagline is the heading's immediate next sibling in the header.
+    expect(heading.nextElementSibling).toBe(tagline)
+  })
+
   it('shows an Adopt button only for available pets', async () => {
     render(<App />)
     await screen.findByText('Biscuit')
