@@ -1,11 +1,20 @@
 # Testing
 
-Petshop has two layers of tests, both run from the repo root:
+Petshop is verified in three layers, all run from the repository root after `pnpm install`:
 
+- **Lint** — TypeScript typecheck across every workspace package.
 - **Unit tests** — [vitest](https://vitest.dev), one suite per app (`apps/api`, `apps/web`).
 - **End-to-end tests** — [Playwright](https://playwright.dev) (chromium), driving the real API + web servers. Specs live in `e2e/`.
 
-All commands below are run from the repository root after `pnpm install`.
+CI runs `lint → test → build → e2e` on every PR and must stay green, so running these locally mirrors what CI checks.
+
+## Lint
+
+```bash
+pnpm lint
+```
+
+This runs `pnpm -r lint`, which typechecks every workspace package (`apps/api` and `apps/web`) with `tsc`.
 
 ## Unit tests
 
@@ -42,6 +51,12 @@ pnpm e2e
 
 This runs `playwright test`. Playwright starts both servers itself — the API (`pnpm --filter @petshop/api start` on `:4000`, against a throwaway `data/e2e.db`) and the web dev server (`pnpm --filter @petshop/web dev` on `:5173`) — so you do **not** need `pnpm dev` running first. The specs live in `e2e/`.
 
-## CI
+## Running on small VMs
 
-CI runs `lint → test → build → e2e` on every PR and must stay green. Running `pnpm test` and `pnpm e2e` locally mirrors what CI checks.
+Workspace-wide builds must run with `--workspace-concurrency=1` on small VMs to avoid exhausting memory when compiling packages in parallel:
+
+```bash
+pnpm -r --workspace-concurrency=1 build
+```
+
+The same flag applies to the other recursive scripts (`pnpm -r --workspace-concurrency=1 lint` and `pnpm -r --workspace-concurrency=1 test`) when resources are tight.
