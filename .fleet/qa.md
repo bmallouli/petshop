@@ -18,5 +18,10 @@ SPEC-SLICE23; this file lives on `main` — edits take effect after merge).
   - Poll before use: `curl -sf localhost:4000/health`, `curl -sf localhost:5173`.
 - Exercise the API with curl and the UI with Playwright specs under
   `/work/qa/`.
+- Artifacts (SPEC-SLICE24): for any UI-visible change, save a full-page
+  Playwright screenshot of the exercised page as evidence to
+  `/work/artifacts/<check-name>.png` (top level, simple filename), and list
+  it in your verdict's "artifacts" array. Fleet serves those files to the
+  ticket owner.
 - This VM is small: never run two workspace-wide builds in parallel
   (`--workspace-concurrency=1` is the repo habit).
