@@ -13,6 +13,7 @@ import {
   formatVisitTime,
   sortAvailableFirst,
   speciesEmoji,
+  totalValueLabel,
   type Pet,
   type Stats,
 } from './App.js'
@@ -194,6 +195,39 @@ describe('App', () => {
     // Clearing the search restores the full count.
     fireEvent.change(search, { target: { value: '' } })
     expect(screen.getByText('2 pets shown')).toBeDefined()
+  })
+
+  it('shows the combined value of the visible pets and follows the filters', async () => {
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    // Both seeded pets on screen: total is the sum of their prices ($899.00 + $649.00).
+    expect(screen.getByText('Total value: $1548.00')).toBeDefined()
+
+    // Filtering to a single species narrows the total to just that pet.
+    const select = screen.getByRole('combobox', { name: 'Species' })
+    fireEvent.change(select, { target: { value: 'dog' } })
+    expect(screen.getByText('Total value: $899.00')).toBeDefined()
+
+    // A name search further narrows (and can empty) the visible set.
+    fireEvent.change(select, { target: { value: 'all' } })
+    const search = screen.getByRole('searchbox', { name: 'Search' })
+    fireEvent.change(search, { target: { value: 'Mochi' } })
+    expect(screen.getByText('Total value: $649.00')).toBeDefined()
+
+    // No visible pets shows a zero total.
+    fireEvent.change(search, { target: { value: 'zzz' } })
+    expect(screen.getByText('Total value: $0.00')).toBeDefined()
+  })
+
+  it('totalValueLabel sums prices and formats like the individual prices', () => {
+    expect(totalValueLabel([])).toBe('Total value: $0.00')
+    expect(
+      totalValueLabel([
+        { id: 1, name: 'A', species: 'dog', priceCents: 89900, status: 'available' },
+        { id: 2, name: 'B', species: 'cat', priceCents: 64900, status: 'adopted' },
+      ]),
+    ).toBe('Total value: $1548.00')
   })
 
   it('shows (0) in the heading when no pets match the list', async () => {

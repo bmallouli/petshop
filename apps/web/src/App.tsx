@@ -59,6 +59,16 @@ export function petsShownLabel(count: number): string {
   return `${count} ${count === 1 ? 'pet' : 'pets'} shown`
 }
 
+/**
+ * Summary line with the combined price of the given (visible) pets, formatted
+ * like the individual prices ("Total value: $1,234.00"). An empty list yields
+ * "Total value: $0.00".
+ */
+export function totalValueLabel(pets: Pet[]): string {
+  const totalCents = pets.reduce((sum, pet) => sum + pet.priceCents, 0)
+  return `Total value: ${formatPrice(totalCents)}`
+}
+
 /** A pet's upcoming visit as returned by GET /api/pets/:id/visits (no cancellation code). */
 export interface Visit {
   id: number
@@ -596,6 +606,7 @@ export function App() {
         </ul>
       )}
       <footer className="pets-footer">{petsShownLabel(visiblePets.length)}</footer>
+      <p className="total-value">{totalValueLabel(visiblePets)}</p>
       <section className="on-hold">
         <button className="show-on-hold" onClick={() => void toggleOnHold()}>
           {showOnHold ? 'Hide pets on hold' : 'Show pets on hold'}
