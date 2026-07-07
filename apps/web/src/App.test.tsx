@@ -871,6 +871,15 @@ describe('App', () => {
     expect(footer.tagName).toBe('FOOTER')
   })
 
+  it('shows a footer with the copyright line at the bottom of the page', async () => {
+    render(<App />)
+    await screen.findByText('Biscuit')
+
+    const footer = screen.getByText('© 2026 My Pet Shop')
+    expect(footer).toBeDefined()
+    expect(footer.tagName).toBe('FOOTER')
+  })
+
   it('maps each seeded species to its emoji and falls back to 🐾 for anything else', () => {
     expect(speciesEmoji('dog')).toBe('🐶')
     expect(speciesEmoji('cat')).toBe('🐱')

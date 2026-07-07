@@ -325,9 +325,14 @@ function PetCard({
   )
 }
 
-/** Site-wide footer shown on every page, carrying the demo notice. */
+/** Site-wide footer shown on every page, carrying the demo notice and copyright line. */
 export function SiteFooter() {
-  return <footer className="site-footer">petshop — Fleet demo</footer>
+  return (
+    <>
+      <footer className="site-footer">petshop — Fleet demo</footer>
+      <footer className="site-copyright">© 2026 My Pet Shop</footer>
+    </>
+  )
 }
 
 export function App() {
