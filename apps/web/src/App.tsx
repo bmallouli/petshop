@@ -564,6 +564,7 @@ export function App() {
     <main>
       <header className="header">
         <h1>🐾 Petshop</h1>
+        <p className="tagline">Find your new best friend</p>
         {stats && <span className="available-count">{stats.available} available</span>}
       </header>
       <label>
