@@ -236,7 +236,12 @@ describe('GET /health', () => {
   it('reports ok', async () => {
     const res = await app.inject({ method: 'GET', url: '/health' })
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ status: 'ok', petCount: 8 })
+    expect(res.json()).toEqual({ status: 'ok', service: 'petshop-api', petCount: 8 })
+  })
+
+  it('reports the service name so operators can identify the backend', async () => {
+    const res = await app.inject({ method: 'GET', url: '/health' })
+    expect(res.json()).toMatchObject({ service: 'petshop-api' })
   })
 
   it('reports petCount matching the pets table row count', async () => {

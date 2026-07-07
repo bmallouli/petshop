@@ -55,7 +55,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
 
   app.get('/health', async () => {
     const { count } = db.prepare('SELECT COUNT(*) AS count FROM pets').get() as { count: number }
-    return { status: 'ok', petCount: count }
+    return { status: 'ok', service: 'petshop-api', petCount: count }
   })
 
   app.get('/version', async () => ({ version: pkg.version, uptimeSeconds: process.uptime() }))
